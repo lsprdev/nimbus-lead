@@ -369,6 +369,8 @@ type MapMarkerProps = {
   onDrag?: (lngLat: { lng: number; lat: number }) => void;
   /** Callback when marker drag ends (requires draggable: true) */
   onDragEnd?: (lngLat: { lng: number; lat: number }) => void;
+  /** CSS stacking order for overlapping markers. */
+  zIndex?: number;
 } & Omit<MarkerOptions, "element">;
 
 function MapMarker({
@@ -381,6 +383,7 @@ function MapMarker({
   onDragStart,
   onDrag,
   onDragEnd,
+  zIndex,
   draggable = false,
   ...markerOptions
 }: MapMarkerProps) {
@@ -486,6 +489,7 @@ function MapMarker({
   if (marker.getPitchAlignment() !== markerOptions.pitchAlignment) {
     marker.setPitchAlignment(markerOptions.pitchAlignment ?? "auto");
   }
+  marker.getElement().style.zIndex = String(zIndex ?? 0);
 
   return (
     <MarkerContext.Provider value={{ marker, map }}>

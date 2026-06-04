@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import maplibregl from 'maplibre-gl'
-import { ChevronRight, Globe2, Loader2, MapPin, Phone, Search, Star } from 'lucide-react'
+import { ExternalLink, Globe2, Loader2, MapPin, Phone, Search, Star } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { DashboardHeader } from '@/components/dashboard/dashboard-header'
@@ -30,6 +30,13 @@ import {
 
 const fallbackCenter: [number, number] = [-46.6333, -23.5505]
 
+function getGoogleMapsUrl(contact: Contact) {
+  if (contact.place_url) return contact.place_url
+
+  const query = [contact.name, contact.address].filter(Boolean).join(' ')
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+}
+
 export default function LeadListPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params)
   const { authFetch } = useAuth()
@@ -37,6 +44,7 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
   const [contacts, setContacts] = React.useState<Contact[]>([])
   const [selectedContactId, setSelectedContactId] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)
+  const contactCardRefs = React.useRef(new globalThis.Map<string, HTMLDivElement>())
 
   const contactsWithCoords = contacts.filter(hasCoordinates)
   const selectedContact = contactsWithCoords.find((contact) => contact.id === selectedContactId)
@@ -44,6 +52,19 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
   const center: [number, number] = firstContact
     ? [firstContact.longitude as number, firstContact.latitude as number]
     : fallbackCenter
+
+  const selectContact = React.useCallback((contactId: string, scrollIntoList = false) => {
+    setSelectedContactId(contactId)
+
+    if (scrollIntoList) {
+      window.requestAnimationFrame(() => {
+        contactCardRefs.current.get(contactId)?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        })
+      })
+    }
+  }, [])
 
   const loadList = React.useCallback(async () => {
     try {
@@ -124,9 +145,6 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
               <section className="h-[620px] min-w-0 overflow-hidden">
                 <div className="flex items-center justify-between gap-3 pb-4">
                   <CardTitle>Contatos encontrados</CardTitle>
-                  <Badge variant="secondary" className="rounded-full px-3 py-1 text-sm">
-                    {contacts.length} resultados
-                  </Badge>
                 </div>
                 <ScrollArea className="h-[560px] pr-3">
                   <div className="flex min-w-0 flex-col gap-4">
@@ -136,7 +154,14 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
                           key={contact.id}
                           contact={contact}
                           isSelected={selectedContactId === contact.id}
-                          onSelect={() => setSelectedContactId(contact.id)}
+                          onSelect={() => selectContact(contact.id)}
+                          cardRef={(element) => {
+                            if (element) {
+                              contactCardRefs.current.set(contact.id, element)
+                            } else {
+                              contactCardRefs.current.delete(contact.id)
+                            }
+                          }}
                         />
                       ))
                     ) : (
@@ -168,20 +193,45 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
                       key={contact.id}
                       longitude={contact.longitude as number}
                       latitude={contact.latitude as number}
+                      onClick={() => selectContact(contact.id, true)}
+                      zIndex={selectedContactId === contact.id ? 20 : 0}
                     >
-                      <MarkerContent>
-                        <div className="flex size-7 items-center justify-center rounded-full border-2 border-background bg-primary text-xs font-semibold text-primary-foreground shadow-lg">
+                      <MarkerContent
+                        className={selectedContactId === contact.id ? 'z-20' : 'z-0'}
+                      >
+                        <div
+                          className={[
+                            'flex items-center justify-center rounded-full border-2 border-background bg-primary font-semibold text-primary-foreground shadow-lg transition-all duration-200',
+                            selectedContactId === contact.id
+                              ? 'size-11 text-base ring-4 ring-primary/20'
+                              : 'size-7 text-xs',
+                          ].join(' ')}
+                        >
                           {index + 1}
                         </div>
                       </MarkerContent>
-                      <MarkerPopup>
-                        <div className="w-64 rounded-lg border bg-popover p-3 text-popover-foreground shadow-lg">
-                          <p className="truncate text-sm font-medium">{contact.name}</p>
+                      <MarkerPopup
+                        offset={selectedContactId === contact.id ? 28 : 18}
+                        className="w-80 max-w-[min(22rem,calc(100vw-2rem))] rounded-xl p-4 shadow-lg"
+                      >
+                        <div className="min-w-0">
+                          <p className="line-clamp-2 text-base font-semibold leading-5">
+                            {contact.name}
+                          </p>
                           {contact.address ? (
-                            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                            <p className="mt-2 line-clamp-2 text-sm leading-5 text-muted-foreground">
                               {contact.address}
                             </p>
                           ) : null}
+                          <a
+                            href={getGoogleMapsUrl(contact)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-3 inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                          >
+                            Ver no Maps
+                            <ExternalLink className="size-4" />
+                          </a>
                         </div>
                       </MarkerPopup>
                     </MapMarker>
@@ -259,10 +309,12 @@ function ContactCard({
   contact,
   isSelected,
   onSelect,
+  cardRef,
 }: {
   contact: Contact
   isSelected: boolean
   onSelect: () => void
+  cardRef?: (element: HTMLDivElement | null) => void
 }) {
   function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (event.key === 'Enter' || event.key === ' ') {
@@ -273,40 +325,47 @@ function ContactCard({
 
   return (
     <div
+      ref={cardRef}
       role="button"
       tabIndex={0}
       onClick={onSelect}
       onKeyDown={handleKeyDown}
       className={[
-        'relative min-w-0 rounded-xl border bg-card p-5 shadow-xs outline-none transition-all',
+        'min-w-0 cursor-pointer rounded-xl border bg-card p-5 shadow-xs outline-none transition-all',
         'hover:border-primary/35 hover:bg-primary/5 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-ring',
-        isSelected ? 'border-primary bg-primary/10 shadow-sm' : 'border-border',
+        isSelected ? 'border-primary/45 shadow-sm' : 'border-border',
       ].join(' ')}
     >
-      {isSelected ? (
-        <span className="absolute inset-y-6 left-0 w-1 rounded-r-full bg-primary" />
-      ) : null}
-      <div className="flex min-w-0 items-start gap-4">
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-wrap items-start gap-2">
-            <p className="min-w-0 flex-1 text-base font-semibold leading-6 text-foreground">
+      <div className="min-w-0">
+        <div className="min-w-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <p
+              className={[
+                'min-w-0 text-base font-semibold leading-6',
+                isSelected ? 'text-primary' : 'text-foreground',
+              ].join(' ')}
+            >
               {contact.name}
             </p>
+            {contact.website ? (
+              <a
+                href={contact.website}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/25 bg-primary/5 px-2 py-0.5 text-xs font-medium text-primary hover:bg-primary/10"
+              >
+                <Globe2 className="size-3" />
+                Site
+              </a>
+            ) : null}
             {contact.rating ? <RatingBadge rating={contact.rating} /> : null}
           </div>
           {contact.category ? (
             <p className="mt-2 truncate text-sm text-muted-foreground">{contact.category}</p>
           ) : null}
         </div>
-        <span
-          className={[
-            'flex size-10 shrink-0 items-center justify-center rounded-full transition-colors',
-            isSelected ? 'bg-primary text-primary-foreground' : 'bg-accent text-accent-foreground',
-          ].join(' ')}
-          aria-hidden="true"
-        >
-          <ChevronRight className="size-5" />
-        </span>
       </div>
       <div className="mt-5 flex min-w-0 flex-col gap-3 text-sm text-muted-foreground">
         {contact.address ? (
@@ -320,18 +379,6 @@ function ContactCard({
             <Phone className="size-5 text-muted-foreground" />
             <span className="min-w-0 truncate">{contact.phone}</span>
           </span>
-        ) : null}
-        {contact.website ? (
-          <a
-            href={contact.website}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(event) => event.stopPropagation()}
-            className="grid min-w-0 grid-cols-[1.25rem_1fr] items-center gap-3 font-medium text-primary hover:underline"
-          >
-            <Globe2 className="size-5" />
-            <span className="min-w-0 truncate">Visitar website</span>
-          </a>
         ) : null}
       </div>
     </div>

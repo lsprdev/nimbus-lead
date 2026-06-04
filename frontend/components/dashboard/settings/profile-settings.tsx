@@ -122,7 +122,7 @@ export function ProfileSettings() {
               Atualize sua foto e os dados pessoais da sua conta.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-6">
+          <CardContent className="flex flex-col gap-6 pt-2">
             <div className="flex flex-col items-center gap-4 sm:flex-row">
               <Avatar className="size-20">
                 {avatar ? (
@@ -177,7 +177,7 @@ export function ProfileSettings() {
               </div>
             </div>
           </CardContent>
-          <CardFooter className="justify-end border-t pt-6">
+          <CardFooter className="justify-end pt-2">
             <Button type="submit" disabled={savingProfile}>
               {savingProfile && <Loader2 className="size-4 animate-spin" />}
               Salvar alterações
@@ -209,7 +209,7 @@ export function ProfileSettings() {
               <Input id="confirm-password" type="password" placeholder="••••••••" />
             </div>
           </CardContent>
-          <CardFooter className="justify-end border-t pt-6">
+          <CardFooter className="justify-end pt-2">
             <Button type="submit" disabled={savingPassword}>
               {savingPassword && <Loader2 className="size-4 animate-spin" />}
               Atualizar senha
