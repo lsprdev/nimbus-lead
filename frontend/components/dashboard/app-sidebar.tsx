@@ -8,7 +8,8 @@ import {
   Search,
 } from 'lucide-react'
 
-import { BrandWordmark } from '@/components/brand'
+import { BrandLogo, BrandWordmark } from '@/components/brand'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   Sidebar,
   SidebarContent,
@@ -51,10 +52,10 @@ export function AppSidebar() {
           </Link>
           <Link
             href="/dashboard"
-            className="hidden size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground group-data-[collapsible=icon]:flex"
-            aria-label="Nimbus"
+            className="hidden group-data-[collapsible=icon]:flex"
+            aria-label="Página inicial"
           >
-            <span className="text-sm font-bold">N</span>
+            <BrandLogo />
           </Link>
         </div>
       </SidebarHeader>
@@ -103,9 +104,14 @@ export function AppSidebar() {
 
       <SidebarFooter>
         <div className="flex items-center gap-3 rounded-lg p-2 group-data-[collapsible=icon]:justify-center">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-semibold text-accent-foreground">
-            {initials}
-          </div>
+          <Avatar className="size-8 shrink-0">
+            {user?.avatarUrl ? (
+              <AvatarImage src={user.avatarUrl} alt="Foto de perfil" />
+            ) : null}
+            <AvatarFallback className="bg-accent text-sm font-semibold text-accent-foreground">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
           <div className="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
             <span className="truncate text-sm font-medium">{user?.name}</span>
             <span className="truncate text-xs text-muted-foreground">{user?.email}</span>

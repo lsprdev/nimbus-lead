@@ -11,6 +11,7 @@ export type AuthUser = {
   id: string
   name: string
   email: string
+  avatarUrl?: string
 }
 
 type StoredSession = {
@@ -32,6 +33,17 @@ type AuthContextValue = {
 
 const AuthContext = React.createContext<AuthContextValue | null>(null)
 
+export function getRecordFileUrl(record: Record<string, unknown>, fieldName: string) {
+  const fileName = String(record[fieldName] ?? '')
+  if (!fileName) return undefined
+
+  const collection = String(record.collectionId ?? record.collectionName ?? 'users')
+  const id = String(record.id ?? '')
+  if (!id) return undefined
+
+  return `${API_BASE_URL}/api/files/${encodeURIComponent(collection)}/${encodeURIComponent(id)}/${encodeURIComponent(fileName)}`
+}
+
 function normalizeUser(model: Record<string, unknown>): AuthUser {
   const email = String(model.email ?? '')
   const name = String(model.name ?? '').trim() || email.split('@')[0] || 'Usuário'
@@ -40,6 +52,7 @@ function normalizeUser(model: Record<string, unknown>): AuthUser {
     id: String(model.id ?? ''),
     name,
     email,
+    avatarUrl: getRecordFileUrl(model, 'avatar'),
   }
 }
 

@@ -8,6 +8,7 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import {
   Avatar,
   AvatarFallback,
+  AvatarImage,
 } from '@/components/ui/avatar'
 import {
   Breadcrumb,
@@ -65,6 +66,9 @@ export function DashboardHeader({ title }: { title: string }) {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="size-9 rounded-full p-0" aria-label="Conta">
               <Avatar className="size-9">
+                {user?.avatarUrl ? (
+                  <AvatarImage src={user.avatarUrl} alt="Foto de perfil" />
+                ) : null}
                 <AvatarFallback className="bg-accent text-accent-foreground">
                   {initials}
                 </AvatarFallback>

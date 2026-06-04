@@ -17,23 +17,78 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
-import { getInitials, useAuth } from '@/lib/auth'
+import { getInitials, getRecordFileUrl, useAuth } from '@/lib/auth'
+
+const MAX_AVATAR_SIZE = 2 * 1024 * 1024
+const ALLOWED_AVATAR_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif'])
+
+function getErrorMessage(payload: unknown, fallback: string) {
+  if (payload && typeof payload === 'object' && 'message' in payload) {
+    return String((payload as { message?: unknown }).message || fallback)
+  }
+  return fallback
+}
 
 export function ProfileSettings() {
-  const { updateUser, user } = useAuth()
+  const { authFetch, updateUser, user } = useAuth()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
-  const [avatar, setAvatar] = React.useState<string | null>(null)
+  const [avatar, setAvatar] = React.useState<string | undefined>(user?.avatarUrl)
   const [name, setName] = React.useState(user?.name ?? '')
   const [email, setEmail] = React.useState(user?.email ?? '')
+  const [uploadingAvatar, setUploadingAvatar] = React.useState(false)
   const [savingProfile, setSavingProfile] = React.useState(false)
   const [savingPassword, setSavingPassword] = React.useState(false)
 
-  function handleAvatarChange(event: React.ChangeEvent<HTMLInputElement>) {
+  React.useEffect(() => {
+    setAvatar(user?.avatarUrl)
+    setName(user?.name ?? '')
+    setEmail(user?.email ?? '')
+  }, [user?.avatarUrl, user?.email, user?.name])
+
+  async function handleAvatarChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
-    if (file) {
-      const url = URL.createObjectURL(file)
-      setAvatar(url)
-      toast.success('Foto atualizada (pré-visualização).')
+    event.target.value = ''
+    if (!file || !user) return
+
+    if (!ALLOWED_AVATAR_TYPES.has(file.type)) {
+      toast.error('Use uma imagem JPG, PNG ou GIF.')
+      return
+    }
+
+    if (file.size > MAX_AVATAR_SIZE) {
+      toast.error('A imagem deve ter no máximo 2MB.')
+      return
+    }
+
+    const previousAvatar = avatar
+    const previewUrl = URL.createObjectURL(file)
+    setAvatar(previewUrl)
+    setUploadingAvatar(true)
+
+    try {
+      const formData = new FormData()
+      formData.append('avatar', file)
+
+      const response = await authFetch(`/api/collections/users/records/${user.id}`, {
+        method: 'PATCH',
+        body: formData,
+      })
+      const payload = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(getErrorMessage(payload, 'Não foi possível atualizar a foto.'))
+      }
+
+      const avatarUrl = getRecordFileUrl(payload ?? {}, 'avatar')
+      setAvatar(avatarUrl)
+      updateUser({ avatarUrl })
+      toast.success('Foto atualizada com sucesso!')
+    } catch (error) {
+      setAvatar(previousAvatar)
+      toast.error(error instanceof Error ? error.message : 'Não foi possível atualizar a foto.')
+    } finally {
+      URL.revokeObjectURL(previewUrl)
+      setUploadingAvatar(false)
     }
   }
 
@@ -71,7 +126,7 @@ export function ProfileSettings() {
             <div className="flex flex-col items-center gap-4 sm:flex-row">
               <Avatar className="size-20">
                 {avatar ? (
-                  <AvatarImage src={avatar || '/placeholder.svg'} alt="Foto de perfil" />
+                  <AvatarImage src={avatar} alt="Foto de perfil" />
                 ) : null}
                 <AvatarFallback className="bg-accent text-lg text-accent-foreground">
                   {getInitials(name, email)}
@@ -83,17 +138,23 @@ export function ProfileSettings() {
                   variant="outline"
                   size="sm"
                   onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingAvatar}
                 >
-                  <Camera className="size-4" />
-                  Trocar foto
+                  {uploadingAvatar ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Camera className="size-4" />
+                  )}
+                  {uploadingAvatar ? 'Enviando...' : 'Trocar foto'}
                 </Button>
                 <p className="text-xs text-muted-foreground">JPG, PNG ou GIF. Máx 2MB.</p>
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/gif"
                   className="hidden"
                   onChange={handleAvatarChange}
+                  disabled={uploadingAvatar}
                 />
               </div>
             </div>

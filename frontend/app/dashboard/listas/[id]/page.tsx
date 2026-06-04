@@ -119,13 +119,13 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
             </div>
 
             <div className="grid gap-6 xl:grid-cols-[460px_1fr]">
-              <Card className="min-h-[620px]">
+              <Card className="h-[620px] overflow-hidden">
                 <CardHeader>
                   <CardTitle>Contatos encontrados</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <ScrollArea className="h-[530px] pr-3">
-                    <div className="flex flex-col gap-3">
+                <CardContent className="min-h-0 flex-1">
+                  <ScrollArea className="h-full pr-3">
+                    <div className="flex min-w-0 flex-col gap-3">
                       {contacts.length ? (
                         contacts.map((contact) => (
                           <ContactCard key={contact.id} contact={contact} />
@@ -146,41 +146,38 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
                 </CardContent>
               </Card>
 
-              <Card className="min-h-[620px] overflow-hidden">
-                <div className="h-[620px]">
-                  <Map
-                    center={center}
-                    zoom={firstContact ? 12 : 10}
-                    className="h-full"
-                    theme="dark"
-                  >
-                    <MapControls showCompass showFullscreen />
-                    <FitMapToContacts contacts={contactsWithCoords} />
-                    {contactsWithCoords.map((contact, index) => (
-                      <MapMarker
-                        key={contact.id}
-                        longitude={contact.longitude as number}
-                        latitude={contact.latitude as number}
-                      >
-                        <MarkerContent>
-                          <div className="flex size-7 items-center justify-center rounded-full border-2 border-background bg-primary text-xs font-semibold text-primary-foreground shadow-lg">
-                            {index + 1}
-                          </div>
-                        </MarkerContent>
-                        <MarkerPopup>
-                          <div className="w-64 rounded-lg border bg-popover p-3 text-popover-foreground shadow-lg">
-                            <p className="truncate text-sm font-medium">{contact.name}</p>
-                            {contact.address ? (
-                              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                                {contact.address}
-                              </p>
-                            ) : null}
-                          </div>
-                        </MarkerPopup>
-                      </MapMarker>
-                    ))}
-                  </Map>
-                </div>
+              <Card className="h-[620px] overflow-hidden p-0">
+                <Map
+                  center={center}
+                  zoom={firstContact ? 12 : 10}
+                  className="h-full"
+                >
+                  <MapControls showCompass showFullscreen />
+                  <FitMapToContacts contacts={contactsWithCoords} />
+                  {contactsWithCoords.map((contact, index) => (
+                    <MapMarker
+                      key={contact.id}
+                      longitude={contact.longitude as number}
+                      latitude={contact.latitude as number}
+                    >
+                      <MarkerContent>
+                        <div className="flex size-7 items-center justify-center rounded-full border-2 border-background bg-primary text-xs font-semibold text-primary-foreground shadow-lg">
+                          {index + 1}
+                        </div>
+                      </MarkerContent>
+                      <MarkerPopup>
+                        <div className="w-64 rounded-lg border bg-popover p-3 text-popover-foreground shadow-lg">
+                          <p className="truncate text-sm font-medium">{contact.name}</p>
+                          {contact.address ? (
+                            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                              {contact.address}
+                            </p>
+                          ) : null}
+                        </div>
+                      </MarkerPopup>
+                    </MapMarker>
+                  ))}
+                </Map>
               </Card>
             </div>
           </>
@@ -235,27 +232,27 @@ function FitMapToContacts({ contacts }: { contacts: Contact[] }) {
 
 function ContactCard({ contact }: { contact: Contact }) {
   return (
-    <div className="rounded-lg border bg-card p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{contact.name}</p>
+    <div className="min-w-0 rounded-lg border bg-card p-4 shadow-xs transition-colors hover:bg-accent/30">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 text-sm font-medium leading-5">{contact.name}</p>
           {contact.category ? (
             <p className="mt-1 truncate text-xs text-muted-foreground">{contact.category}</p>
           ) : null}
         </div>
         {contact.rating ? <Badge variant="outline">{contact.rating}</Badge> : null}
       </div>
-      <div className="mt-3 flex flex-col gap-2 text-xs text-muted-foreground">
+      <div className="mt-3 flex min-w-0 flex-col gap-2 text-xs text-muted-foreground">
         {contact.address ? (
-          <span className="flex gap-2">
+          <span className="grid min-w-0 grid-cols-[1rem_1fr] gap-2">
             <MapPin className="size-4 shrink-0" />
-            <span className="line-clamp-2">{contact.address}</span>
+            <span className="min-w-0 break-words leading-5">{contact.address}</span>
           </span>
         ) : null}
         {contact.phone ? (
-          <span className="flex items-center gap-2">
+          <span className="grid min-w-0 grid-cols-[1rem_1fr] items-center gap-2">
             <Phone className="size-4 shrink-0" />
-            {contact.phone}
+            <span className="min-w-0 truncate">{contact.phone}</span>
           </span>
         ) : null}
         {contact.website ? (
@@ -263,10 +260,10 @@ function ContactCard({ contact }: { contact: Contact }) {
             href={contact.website}
             target="_blank"
             rel="noreferrer"
-            className="flex items-center gap-2 text-foreground hover:underline"
+            className="grid min-w-0 grid-cols-[1rem_1fr] items-center gap-2 text-foreground hover:underline"
           >
             <ExternalLink className="size-4 shrink-0" />
-            Website
+            <span className="min-w-0 truncate">Website</span>
           </a>
         ) : null}
       </div>
