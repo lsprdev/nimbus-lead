@@ -2,12 +2,12 @@
 
 import * as React from 'react'
 import maplibregl from 'maplibre-gl'
-import { ExternalLink, Loader2, MapPin, Phone, Search } from 'lucide-react'
+import { ChevronRight, Globe2, Loader2, MapPin, Phone, Search, Star } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { DashboardHeader } from '@/components/dashboard/dashboard-header'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardTitle } from '@/components/ui/card'
 import {
   Map,
   MapControls,
@@ -35,9 +35,11 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
   const { authFetch } = useAuth()
   const [list, setList] = React.useState<LeadList | null>(null)
   const [contacts, setContacts] = React.useState<Contact[]>([])
+  const [selectedContactId, setSelectedContactId] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)
 
   const contactsWithCoords = contacts.filter(hasCoordinates)
+  const selectedContact = contactsWithCoords.find((contact) => contact.id === selectedContactId)
   const firstContact = contactsWithCoords[0]
   const center: [number, number] = firstContact
     ? [firstContact.longitude as number, firstContact.latitude as number]
@@ -90,7 +92,7 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
         {loading ? (
           <>
             <Skeleton className="h-20 w-full" />
-            <div className="grid gap-6 xl:grid-cols-[460px_1fr]">
+            <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
               <Skeleton className="h-[620px]" />
               <Skeleton className="h-[620px]" />
             </div>
@@ -118,33 +120,39 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
               </div>
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-[460px_1fr]">
-              <Card className="h-[620px] overflow-hidden">
-                <CardHeader>
+            <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
+              <section className="h-[620px] min-w-0 overflow-hidden">
+                <div className="flex items-center justify-between gap-3 pb-4">
                   <CardTitle>Contatos encontrados</CardTitle>
-                </CardHeader>
-                <CardContent className="min-h-0 flex-1">
-                  <ScrollArea className="h-full pr-3">
-                    <div className="flex min-w-0 flex-col gap-3">
-                      {contacts.length ? (
-                        contacts.map((contact) => (
-                          <ContactCard key={contact.id} contact={contact} />
-                        ))
-                      ) : (
-                        <div className="flex h-[420px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed text-center">
-                          <Search className="size-8 text-muted-foreground" />
-                          <div>
-                            <p className="text-sm font-medium">Aguardando contatos</p>
-                            <p className="text-xs text-muted-foreground">
-                              Eles aparecem aqui conforme o scraper salva os resultados.
-                            </p>
-                          </div>
+                  <Badge variant="secondary" className="rounded-full px-3 py-1 text-sm">
+                    {contacts.length} resultados
+                  </Badge>
+                </div>
+                <ScrollArea className="h-[560px] pr-3">
+                  <div className="flex min-w-0 flex-col gap-4">
+                    {contacts.length ? (
+                      contacts.map((contact) => (
+                        <ContactCard
+                          key={contact.id}
+                          contact={contact}
+                          isSelected={selectedContactId === contact.id}
+                          onSelect={() => setSelectedContactId(contact.id)}
+                        />
+                      ))
+                    ) : (
+                      <div className="flex h-[420px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed text-center">
+                        <Search className="size-8 text-muted-foreground" />
+                        <div>
+                          <p className="text-sm font-medium">Aguardando contatos</p>
+                          <p className="text-xs text-muted-foreground">
+                            Eles aparecem aqui conforme o scraper salva os resultados.
+                          </p>
                         </div>
-                      )}
-                    </div>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
+                      </div>
+                    )}
+                  </div>
+                </ScrollArea>
+              </section>
 
               <Card className="h-[620px] overflow-hidden p-0">
                 <Map
@@ -154,6 +162,7 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
                 >
                   <MapControls showCompass showFullscreen />
                   <FitMapToContacts contacts={contactsWithCoords} />
+                  <FocusMapOnContact contact={selectedContact} />
                   {contactsWithCoords.map((contact, index) => (
                     <MapMarker
                       key={contact.id}
@@ -230,28 +239,85 @@ function FitMapToContacts({ contacts }: { contacts: Contact[] }) {
   return null
 }
 
-function ContactCard({ contact }: { contact: Contact }) {
+function FocusMapOnContact({ contact }: { contact?: Contact }) {
+  const { map, isLoaded } = useMap()
+
+  React.useEffect(() => {
+    if (!map || !isLoaded || !contact || !hasCoordinates(contact)) return
+
+    map.easeTo({
+      center: [contact.longitude as number, contact.latitude as number],
+      zoom: 15,
+      duration: 600,
+    })
+  }, [contact, isLoaded, map])
+
+  return null
+}
+
+function ContactCard({
+  contact,
+  isSelected,
+  onSelect,
+}: {
+  contact: Contact
+  isSelected: boolean
+  onSelect: () => void
+}) {
+  function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      onSelect()
+    }
+  }
+
   return (
-    <div className="min-w-0 rounded-lg border bg-card p-4 shadow-xs transition-colors hover:bg-accent/30">
-      <div className="flex min-w-0 items-start justify-between gap-3">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={handleKeyDown}
+      className={[
+        'relative min-w-0 rounded-xl border bg-card p-5 shadow-xs outline-none transition-all',
+        'hover:border-primary/35 hover:bg-primary/5 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-ring',
+        isSelected ? 'border-primary bg-primary/10 shadow-sm' : 'border-border',
+      ].join(' ')}
+    >
+      {isSelected ? (
+        <span className="absolute inset-y-6 left-0 w-1 rounded-r-full bg-primary" />
+      ) : null}
+      <div className="flex min-w-0 items-start gap-4">
         <div className="min-w-0 flex-1">
-          <p className="line-clamp-2 text-sm font-medium leading-5">{contact.name}</p>
+          <div className="flex min-w-0 flex-wrap items-start gap-2">
+            <p className="min-w-0 flex-1 text-base font-semibold leading-6 text-foreground">
+              {contact.name}
+            </p>
+            {contact.rating ? <RatingBadge rating={contact.rating} /> : null}
+          </div>
           {contact.category ? (
-            <p className="mt-1 truncate text-xs text-muted-foreground">{contact.category}</p>
+            <p className="mt-2 truncate text-sm text-muted-foreground">{contact.category}</p>
           ) : null}
         </div>
-        {contact.rating ? <Badge variant="outline">{contact.rating}</Badge> : null}
+        <span
+          className={[
+            'flex size-10 shrink-0 items-center justify-center rounded-full transition-colors',
+            isSelected ? 'bg-primary text-primary-foreground' : 'bg-accent text-accent-foreground',
+          ].join(' ')}
+          aria-hidden="true"
+        >
+          <ChevronRight className="size-5" />
+        </span>
       </div>
-      <div className="mt-3 flex min-w-0 flex-col gap-2 text-xs text-muted-foreground">
+      <div className="mt-5 flex min-w-0 flex-col gap-3 text-sm text-muted-foreground">
         {contact.address ? (
-          <span className="grid min-w-0 grid-cols-[1rem_1fr] gap-2">
-            <MapPin className="size-4 shrink-0" />
-            <span className="min-w-0 break-words leading-5">{contact.address}</span>
+          <span className="grid min-w-0 grid-cols-[1.25rem_1fr] gap-3">
+            <MapPin className="mt-0.5 size-5 text-muted-foreground" />
+            <span className="min-w-0 break-words leading-6">{contact.address}</span>
           </span>
         ) : null}
         {contact.phone ? (
-          <span className="grid min-w-0 grid-cols-[1rem_1fr] items-center gap-2">
-            <Phone className="size-4 shrink-0" />
+          <span className="grid min-w-0 grid-cols-[1.25rem_1fr] items-center gap-3">
+            <Phone className="size-5 text-muted-foreground" />
             <span className="min-w-0 truncate">{contact.phone}</span>
           </span>
         ) : null}
@@ -260,13 +326,33 @@ function ContactCard({ contact }: { contact: Contact }) {
             href={contact.website}
             target="_blank"
             rel="noreferrer"
-            className="grid min-w-0 grid-cols-[1rem_1fr] items-center gap-2 text-foreground hover:underline"
+            onClick={(event) => event.stopPropagation()}
+            className="grid min-w-0 grid-cols-[1.25rem_1fr] items-center gap-3 font-medium text-primary hover:underline"
           >
-            <ExternalLink className="size-4 shrink-0" />
-            <span className="min-w-0 truncate">Website</span>
+            <Globe2 className="size-5" />
+            <span className="min-w-0 truncate">Visitar website</span>
           </a>
         ) : null}
       </div>
     </div>
+  )
+}
+
+function RatingBadge({ rating }: { rating: string }) {
+  const value = Number.parseFloat(rating.replace(',', '.'))
+  const isStrong = Number.isFinite(value) && value >= 4.5
+
+  return (
+    <span
+      className={[
+        'inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-sm font-semibold',
+        isStrong
+          ? 'bg-emerald-500 text-white'
+          : 'bg-primary text-primary-foreground',
+      ].join(' ')}
+    >
+      <Star className="size-3.5 fill-current" />
+      {rating}
+    </span>
   )
 }
