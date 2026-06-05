@@ -151,3 +151,82 @@
     @apply hidden!;
   }
 }
+
+@layer components {
+  .auth-dot-wave {
+    position: absolute;
+    inset: 0;
+    opacity: 0.18;
+    background-image:
+      radial-gradient(circle at center, currentColor 1.5px, transparent 1.6px),
+      radial-gradient(circle at center, currentColor 1px, transparent 1.1px);
+    background-position:
+      0 0,
+      12px 12px;
+    background-size:
+      32px 32px,
+      32px 32px;
+    mask-image: linear-gradient(
+      100deg,
+      transparent 0%,
+      black 18%,
+      black 76%,
+      transparent 100%
+    );
+    animation: auth-dot-wave 14s ease-in-out infinite alternate;
+  }
+
+  .auth-dot-wave::after {
+    content: '';
+    position: absolute;
+    inset: 18% -12% 12% -12%;
+    background-image: radial-gradient(
+      circle at center,
+      currentColor 1.5px,
+      transparent 1.6px
+    );
+    background-size: 22px 22px;
+    transform: rotate(-8deg);
+    opacity: 0.65;
+    mask-image: radial-gradient(
+      ellipse at center,
+      black 0%,
+      black 34%,
+      transparent 72%
+    );
+    animation: auth-dot-ripple 8s ease-in-out infinite;
+  }
+}
+
+@keyframes auth-dot-wave {
+  0% {
+    background-position:
+      0 0,
+      12px 12px;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    background-position:
+      28px 16px,
+      44px 28px;
+    transform: translate3d(-1.5rem, 0.75rem, 0) scale(1.03);
+  }
+  100% {
+    background-position:
+      48px 32px,
+      60px 42px;
+    transform: translate3d(1rem, -0.5rem, 0) scale(1.01);
+  }
+}
+
+@keyframes auth-dot-ripple {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-8deg) scale(0.96);
+    opacity: 0.35;
+  }
+  50% {
+    transform: translateY(-1rem) rotate(-8deg) scale(1.04);
+    opacity: 0.75;
+  }
+}

@@ -2,7 +2,15 @@ import type { ReactNode } from "react";
 import { Quote } from "lucide-react";
 
 import { BrandWordmark } from "@/components/brand";
+import AITextLoading from "@/components/kokonutui/ai-text-loading";
 import { ThemeToggle } from "@/components/theme-toggle";
+
+const LEAD_LOADING_PHRASES = [
+  "Encontrando contatos em São Paulo, SP...",
+  "Filtrando empresas por segmento...",
+  "Validando telefones e endereços...",
+  "Montando lista de prospecção...",
+];
 
 export function AuthShell({
   title,
@@ -39,6 +47,7 @@ export function AuthShell({
       {/* Painel decorativo */}
       <div className="relative hidden flex-col justify-between overflow-hidden bg-primary p-12 text-primary-foreground lg:flex">
         <ThemeToggle className="absolute right-8 top-8 z-10 text-primary-foreground hover:bg-primary-foreground/15 hover:text-primary-foreground" />
+        <div className="auth-dot-wave" aria-hidden="true" />
         <div
           className="absolute inset-0 opacity-[0.07]"
           style={{
@@ -49,7 +58,7 @@ export function AuthShell({
           aria-hidden="true"
         />
         <div className="relative" />
-        <div className="relative max-w-md">
+        <div className="relative mt-8 max-w-md">
           <Quote className="mb-4 size-8 opacity-60" />
           <p className="text-2xl font-medium leading-relaxed text-balance">
             Encontre empresas por segmento e região, acompanhe os contatos
@@ -65,19 +74,12 @@ export function AuthShell({
             </div>
           </div>
         </div>
-        <div className="relative flex gap-8 text-sm opacity-80">
-          <div>
-            <p className="text-2xl font-semibold opacity-100">Segmento</p>
-            <p>Filtro</p>
-          </div>
-          <div>
-            <p className="text-2xl font-semibold opacity-100">Região</p>
-            <p>Localização</p>
-          </div>
-          <div>
-            <p className="text-2xl font-semibold opacity-100">Lista</p>
-            <p>Prospecção</p>
-          </div>
+        <div className="relative min-h-24 text-primary-foreground">
+          <AITextLoading
+            texts={LEAD_LOADING_PHRASES}
+            interval={1800}
+            className="max-w-full text-2xl leading-tight whitespace-nowrap lg:text-3xl"
+          />
         </div>
       </div>
     </main>
