@@ -74,11 +74,11 @@ export function AuthShell({
             </div>
           </div>
         </div>
-        <div className="relative min-h-24 text-primary-foreground">
+        <div className="relative text-primary-foreground">
           <AITextLoading
             texts={LEAD_LOADING_PHRASES}
             interval={1800}
-            className="max-w-full text-2xl leading-tight whitespace-nowrap lg:text-3xl"
+            className="max-w-full text-2xl leading-tight whitespace-nowrap lg:text-2xl"
           />
         </div>
       </div>
