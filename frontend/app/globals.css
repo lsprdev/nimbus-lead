@@ -122,6 +122,11 @@
   body {
     @apply bg-background text-foreground;
   }
+  .font-brand {
+    font-family: 'Playfair Display', serif;
+    font-optical-sizing: auto;
+    font-style: normal;
+  }
   a[href],
   button:not(:disabled),
   [role='button']:not([aria-disabled='true']),

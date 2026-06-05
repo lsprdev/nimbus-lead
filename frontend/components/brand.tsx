@@ -1,10 +1,10 @@
-import { cn } from '@/lib/utils'
+import { cn } from "@/lib/utils";
 
 export function BrandLogo({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        'flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground',
+        "flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground",
         className,
       )}
       aria-hidden="true"
@@ -17,19 +17,35 @@ export function BrandLogo({ className }: { className?: string }) {
         xmlns="http://www.w3.org/2000/svg"
       >
         <path
-          d="M5 16.5C3.34 16.5 2 15.16 2 13.5C2 12.02 3.06 10.79 4.46 10.55C4.42 10.37 4.4 10.19 4.4 10C4.4 8.07 5.97 6.5 7.9 6.5C8.5 6.5 9.06 6.65 9.55 6.92C10.2 5.51 11.63 4.5 13.3 4.5C15.6 4.5 17.5 6.4 17.5 8.7C17.5 8.85 17.49 9 17.47 9.15C19.15 9.5 20.4 11 20.4 12.78C20.4 14.84 18.74 16.5 16.68 16.5H5Z"
+          d="M4.75 5.5L9.15 3.75C9.58 3.58 10.05 3.58 10.48 3.75L13.52 4.97C13.95 5.14 14.42 5.14 14.85 4.97L19.25 3.22C20.07 2.89 21 3.49 21 4.37V17.79C21 18.3 20.69 18.76 20.21 18.95L15.81 20.7C15.38 20.87 14.91 20.87 14.48 20.7L11.44 19.48C11.01 19.31 10.54 19.31 10.11 19.48L5.71 21.23C4.89 21.56 3.96 20.96 3.96 20.08V6.66C3.96 6.15 4.27 5.69 4.75 5.5Z"
           fill="currentColor"
+          opacity="0.32"
+        />
+        <path
+          d="M9.75 4V19.05M14.25 5.1V20.15"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+        <path
+          d="M5.25 6.5L9.75 4.7L14.25 6.5L18.75 4.7V17.7L14.25 19.5L9.75 17.7L5.25 19.5V6.5Z"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinejoin="round"
+          strokeLinecap="round"
         />
       </svg>
     </div>
-  )
+  );
 }
 
 export function BrandWordmark({ className }: { className?: string }) {
   return (
-    <div className={cn('flex items-center gap-2', className)}>
+    <div className={cn("flex items-center gap-2", className)}>
       <BrandLogo />
-      <span className="text-lg font-semibold tracking-tight">Nimbus</span>
+      <span className="font-brand text-lg font-semibold tracking-tight">
+        Karta CRM
+      </span>
     </div>
-  )
+  );
 }

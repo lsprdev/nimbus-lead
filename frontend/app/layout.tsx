@@ -10,7 +10,7 @@ const _geist = Geist({ subsets: ['latin'] })
 const _geistMono = Geist_Mono({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Nimbus — Leads Finder',
+  title: 'Karta CRM — Leads Finder',
   description: 'Busque empresas, acompanhe contatos e monte listas de leads locais.',
   generator: 'v0.app',
 }
@@ -22,6 +22,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" className="bg-background" suppressHydrationWarning>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className="font-sans antialiased">
         <ThemeProvider
           attribute="class"
