@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Quote } from "lucide-react";
 
 import { BrandWordmark } from "@/components/brand";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export function AuthShell({
   title,
@@ -37,6 +38,7 @@ export function AuthShell({
 
       {/* Painel decorativo */}
       <div className="relative hidden flex-col justify-between overflow-hidden bg-primary p-12 text-primary-foreground lg:flex">
+        <ThemeToggle className="absolute right-8 top-8 z-10 text-primary-foreground hover:bg-primary-foreground/15 hover:text-primary-foreground" />
         <div
           className="absolute inset-0 opacity-[0.07]"
           style={{
@@ -50,8 +52,8 @@ export function AuthShell({
         <div className="relative max-w-md">
           <Quote className="mb-4 size-8 opacity-60" />
           <p className="text-2xl font-medium leading-relaxed text-balance">
-            Encontre empresas no Google Maps, acompanhe cada contato em tempo
-            real e organize listas prontas para prospecção.
+            Encontre empresas por segmento e região, acompanhe os contatos
+            encontrados e organize listas prontas para prospecção.
           </p>
           <div className="mt-6 flex items-center gap-3">
             <div className="flex size-10 items-center justify-center rounded-full bg-primary-foreground/15 font-semibold">
@@ -65,16 +67,16 @@ export function AuthShell({
         </div>
         <div className="relative flex gap-8 text-sm opacity-80">
           <div>
-            <p className="text-2xl font-semibold opacity-100">60+</p>
-            <p>Resultados</p>
+            <p className="text-2xl font-semibold opacity-100">Segmento</p>
+            <p>Filtro</p>
           </div>
           <div>
-            <p className="text-2xl font-semibold opacity-100">Maps</p>
-            <p>Origem</p>
+            <p className="text-2xl font-semibold opacity-100">Região</p>
+            <p>Localização</p>
           </div>
           <div>
-            <p className="text-2xl font-semibold opacity-100">Live</p>
-            <p>Mapa</p>
+            <p className="text-2xl font-semibold opacity-100">Lista</p>
+            <p>Prospecção</p>
           </div>
         </div>
       </div>
