@@ -31,7 +31,8 @@ export function AuthShell({
           </div>
         </div>
         <p className="text-center text-xs text-muted-foreground lg:text-left">
-          © {new Date().getFullYear()} Karta CRM. Todos os direitos reservados.
+          © {new Date().getFullYear()} Karta Leads. Todos os direitos
+          reservados.
         </p>
       </div>
 
