@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   CheckCircle2,
@@ -35,7 +34,6 @@ import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 export default function SearchPage() {
-  const router = useRouter();
   const { authFetch } = useAuth();
   const [lists, setLists] = React.useState<LeadList[]>([]);
   const [loadingLists, setLoadingLists] = React.useState(true);
@@ -77,18 +75,20 @@ export default function SearchPage() {
 
   async function handleCreateList(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const form = event.currentTarget;
     setCreating(true);
 
-    const formData = new FormData(event.currentTarget);
+    const formData = new FormData(form);
     const name = String(formData.get("name") ?? "");
     const searchTerm = String(formData.get("searchTerm") ?? "");
     const location = String(formData.get("location") ?? "");
+    const maxResults = Number(formData.get("maxResults") ?? 30);
 
     try {
       const response = await authFetch("/api/lead-lists", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, searchTerm, location }),
+        body: JSON.stringify({ name, searchTerm, location, maxResults }),
       });
       const payload = await response.json().catch(() => null);
 
@@ -97,9 +97,13 @@ export default function SearchPage() {
       }
 
       const list = normalizeList(payload);
+      setLists((currentLists) => [
+        list,
+        ...currentLists.filter((currentList) => currentList.id !== list.id),
+      ]);
       toast.success("Lista criada. A busca foi iniciada.");
       setCreateDialogOpen(false);
-      router.push(`/dashboard/listas/${list.id}`);
+      form.reset();
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Erro ao criar lista.",
@@ -159,14 +163,29 @@ export default function SearchPage() {
                       required
                     />
                   </Field>
-                  <Field>
-                    <FieldLabel htmlFor="location">Localização</FieldLabel>
-                    <Input
-                      id="location"
-                      name="location"
-                      placeholder="São Paulo, SP"
-                    />
-                  </Field>
+                  <div className="grid gap-4 sm:grid-cols-[1fr_160px]">
+                    <Field>
+                      <FieldLabel htmlFor="location">Localização</FieldLabel>
+                      <Input
+                        id="location"
+                        name="location"
+                        placeholder="São Paulo, SP"
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="maxResults">Quantidade</FieldLabel>
+                      <Input
+                        id="maxResults"
+                        name="maxResults"
+                        type="number"
+                        min={1}
+                        max={500}
+                        step={1}
+                        defaultValue={30}
+                        required
+                      />
+                    </Field>
+                  </div>
                 </FieldGroup>
               </form>
               <DialogFooter>
@@ -318,6 +337,8 @@ function MetricCard({
 }
 
 function LeadListCard({ list }: { list: LeadList }) {
+  const reachedSavedLimit = list.total_found <= list.max_results;
+
   return (
     <Link
       href={`/dashboard/listas/${list.id}`}
@@ -326,7 +347,7 @@ function LeadListCard({ list }: { list: LeadList }) {
       <span className="absolute inset-y-4 left-0 w-1 rounded-r-full bg-primary opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex min-w-0 items-start gap-4">
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground">
+          <span className="flex size-11 mt-1 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground">
             <Search
               className="size-5 -translate-x-0.5 -translate-y-0.5"
               strokeWidth={2.25}
@@ -346,8 +367,12 @@ function LeadListCard({ list }: { list: LeadList }) {
           <div className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
             <span className="font-semibold text-foreground">
               {list.total_found.toLocaleString("pt-BR")}
-            </span>{" "}
-            contatos
+            </span>
+            {reachedSavedLimit ? (
+              <> de {list.max_results.toLocaleString("pt-BR")}</>
+            ) : (
+              <> contatos</>
+            )}
           </div>
           <ArrowRight className="size-5 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-primary" />
         </div>

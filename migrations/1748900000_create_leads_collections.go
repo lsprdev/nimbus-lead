@@ -24,6 +24,13 @@ func init() {
 		leadLists.Fields.Add(&core.TextField{Name: "name", Required: true, Max: 180, Presentable: true})
 		leadLists.Fields.Add(&core.TextField{Name: "search_term", Required: true, Max: 240})
 		leadLists.Fields.Add(&core.TextField{Name: "location", Max: 240})
+		leadLists.Fields.Add(&core.NumberField{
+			Name:     "max_results",
+			OnlyInt:  true,
+			Required: true,
+			Min:      types.Pointer[float64](1),
+			Max:      types.Pointer[float64](500),
+		})
 		leadLists.Fields.Add(&core.SelectField{Name: "status", Required: true, Values: []string{"pending", "running", "completed", "failed"}})
 		leadLists.Fields.Add(&core.NumberField{Name: "total_found", OnlyInt: true})
 		leadLists.Fields.Add(&core.TextField{Name: "error", Max: 2000})

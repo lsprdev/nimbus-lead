@@ -17,12 +17,16 @@ import (
 const (
 	collectionLeadLists = "lead_lists"
 	collectionContacts  = "contacts"
+	defaultMaxResults   = 30
+	minMaxResults       = 1
+	maxMaxResults       = 500
 )
 
 type createListRequest struct {
 	Name       string `json:"name"`
 	SearchTerm string `json:"searchTerm"`
 	Location   string `json:"location"`
+	MaxResults int    `json:"maxResults"`
 }
 
 func Register(app core.App) {
@@ -46,6 +50,7 @@ func createLeadList(app core.App) func(*core.RequestEvent) error {
 		payload.Name = strings.TrimSpace(payload.Name)
 		payload.SearchTerm = strings.TrimSpace(payload.SearchTerm)
 		payload.Location = strings.TrimSpace(payload.Location)
+		payload.MaxResults = normalizeMaxResults(payload.MaxResults)
 
 		if payload.Name == "" || payload.SearchTerm == "" {
 			return e.BadRequestError("Name and searchTerm are required.", nil)
@@ -61,6 +66,7 @@ func createLeadList(app core.App) func(*core.RequestEvent) error {
 		record.Set("name", payload.Name)
 		record.Set("search_term", payload.SearchTerm)
 		record.Set("location", payload.Location)
+		record.Set("max_results", payload.MaxResults)
 		record.Set("status", "running")
 		record.Set("total_found", 0)
 
@@ -68,7 +74,7 @@ func createLeadList(app core.App) func(*core.RequestEvent) error {
 			return e.InternalServerError("Could not create lead list.", err)
 		}
 
-		go runSearchJob(app, record.Id, e.Auth.Id, payload.SearchTerm, payload.Location)
+		go runSearchJob(app, record.Id, e.Auth.Id, payload.SearchTerm, payload.Location, payload.MaxResults)
 
 		return e.JSON(201, record)
 	}
@@ -126,11 +132,12 @@ func listContacts(app core.App) func(*core.RequestEvent) error {
 	}
 }
 
-func runSearchJob(app core.App, listId, userId, searchTerm, location string) {
+func runSearchJob(app core.App, listId, userId, searchTerm, location string, maxResults int) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 
 	s := scraper.NewFromEnv()
+	s.SetMaxResults(normalizeMaxResults(maxResults))
 	err := s.Search(ctx, searchTerm, location, func(lead scraper.Lead) error {
 		if err := saveContact(app, listId, userId, lead); err != nil {
 			return err
@@ -149,6 +156,19 @@ func runSearchJob(app core.App, listId, userId, searchTerm, location string) {
 	if err := updateListStatus(app, listId, "completed", ""); err != nil {
 		log.Printf("update completed status for %s: %v", listId, err)
 	}
+}
+
+func normalizeMaxResults(maxResults int) int {
+	if maxResults == 0 {
+		return defaultMaxResults
+	}
+	if maxResults < minMaxResults {
+		return minMaxResults
+	}
+	if maxResults > maxMaxResults {
+		return maxMaxResults
+	}
+	return maxResults
 }
 
 func saveContact(app core.App, listId, userId string, lead scraper.Lead) error {

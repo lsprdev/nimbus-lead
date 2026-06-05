@@ -66,6 +66,12 @@ func NewFromEnv() *Scraper {
 	}
 }
 
+func (s *Scraper) SetMaxResults(maxResults int) {
+	if maxResults > 0 {
+		s.config.MaxResults = maxResults
+	}
+}
+
 func (s *Scraper) Search(ctx context.Context, searchTerm, location string, onLead func(Lead) error) error {
 	query := strings.TrimSpace(searchTerm)
 	if location != "" {
@@ -127,7 +133,15 @@ func (s *Scraper) scrollResults(ctx context.Context, page playwright.Page) {
 		return
 	}
 
-	for i := 0; i < 15; i++ {
+	scrolls := 15
+	if s.config.MaxResults > 100 {
+		scrolls = 30
+	}
+	if s.config.MaxResults > 250 {
+		scrolls = 60
+	}
+
+	for i := 0; i < scrolls; i++ {
 		if ctx.Err() != nil {
 			return
 		}
