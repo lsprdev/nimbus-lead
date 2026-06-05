@@ -2,18 +2,38 @@
 
 import * as React from 'react'
 import maplibregl from 'maplibre-gl'
-import { ExternalLink, Globe2, Loader2, MapPin, Phone, Search, Star } from 'lucide-react'
+import {
+  ChevronDown,
+  Download,
+  ExternalLink,
+  FileText,
+  Globe2,
+  Loader2,
+  MapPin,
+  Phone,
+  Search,
+  Share2,
+  Star,
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 import { DashboardHeader } from '@/components/dashboard/dashboard-header'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Card, CardTitle } from '@/components/ui/card'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
 import {
   Map,
   MapControls,
   MapMarker,
+  MapPopup,
   MarkerContent,
-  MarkerPopup,
   useMap,
 } from '@/components/ui/map'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -43,9 +63,24 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
   const [list, setList] = React.useState<LeadList | null>(null)
   const [contacts, setContacts] = React.useState<Contact[]>([])
   const [selectedContactId, setSelectedContactId] = React.useState<string | null>(null)
+  const [contactQuery, setContactQuery] = React.useState('')
   const [loading, setLoading] = React.useState(true)
   const contactCardRefs = React.useRef(new globalThis.Map<string, HTMLDivElement>())
 
+  const normalizedContactQuery = contactQuery.trim().toLowerCase()
+  const filteredContacts = normalizedContactQuery
+    ? contacts.filter((contact) =>
+        [
+          contact.name,
+          contact.category,
+          contact.address,
+          contact.phone,
+          contact.website,
+        ]
+          .filter(Boolean)
+          .some((value) => value?.toLowerCase().includes(normalizedContactQuery)),
+      )
+    : contacts
   const contactsWithCoords = contacts.filter(hasCoordinates)
   const selectedContact = contactsWithCoords.find((contact) => contact.id === selectedContactId)
   const firstContact = contactsWithCoords[0]
@@ -120,7 +155,7 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
           </>
         ) : list ? (
           <>
-            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div className="flex flex-col gap-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-2xl font-semibold tracking-tight text-balance">
@@ -133,37 +168,92 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
                   {list.location ? ` em ${list.location}` : null}
                 </p>
               </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                {(list.status === 'pending' || list.status === 'running') && (
-                  <Loader2 className="size-4 animate-spin" />
-                )}
-                {contacts.length} contatos encontrados
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  {(list.status === 'pending' || list.status === 'running') && (
+                    <Loader2 className="size-4 animate-spin" />
+                  )}
+                  {contacts.length} contatos encontrados
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button type="button" variant="outline" size="sm">
+                        <Download className="size-4" />
+                        Exportar
+                        <ChevronDown className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-40">
+                      <DropdownMenuItem>
+                        <Download className="size-4" />
+                        CSV
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <FileText className="size-4" />
+                        PDF
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Button type="button" variant="outline" size="sm">
+                    <Share2 className="size-4" />
+                    Compartilhar
+                  </Button>
+                </div>
               </div>
             </div>
 
             <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
-              <section className="h-[620px] min-w-0 overflow-hidden">
-                <div className="flex items-center justify-between gap-3 pb-4">
-                  <CardTitle>Contatos encontrados</CardTitle>
+              <section className="flex h-[620px] min-w-0 flex-col">
+                <div className="flex flex-col gap-3 pb-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <CardTitle>Contatos encontrados</CardTitle>
+                    {contactQuery ? (
+                      <span className="text-sm text-muted-foreground">
+                        {filteredContacts.length} de {contacts.length}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="relative px-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={contactQuery}
+                      onChange={(event) => setContactQuery(event.target.value)}
+                      placeholder="Buscar por nome, categoria, endereço..."
+                      className="pl-9"
+                    />
+                  </div>
                 </div>
-                <ScrollArea className="h-[560px] pr-3">
+                <ScrollArea className="min-h-0 flex-1 pr-3">
                   <div className="flex min-w-0 flex-col gap-4">
                     {contacts.length ? (
-                      contacts.map((contact) => (
-                        <ContactCard
-                          key={contact.id}
-                          contact={contact}
-                          isSelected={selectedContactId === contact.id}
-                          onSelect={() => selectContact(contact.id)}
-                          cardRef={(element) => {
-                            if (element) {
-                              contactCardRefs.current.set(contact.id, element)
-                            } else {
-                              contactCardRefs.current.delete(contact.id)
-                            }
-                          }}
-                        />
-                      ))
+                      filteredContacts.length ? (
+                        filteredContacts.map((contact) => (
+                          <ContactCard
+                            key={contact.id}
+                            contact={contact}
+                            isSelected={selectedContactId === contact.id}
+                            onSelect={() => selectContact(contact.id)}
+                            cardRef={(element) => {
+                              if (element) {
+                                contactCardRefs.current.set(contact.id, element)
+                              } else {
+                                contactCardRefs.current.delete(contact.id)
+                              }
+                            }}
+                          />
+                        ))
+                      ) : (
+                        <div className="flex h-[420px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed text-center">
+                          <Search className="size-8 text-muted-foreground" />
+                          <div>
+                            <p className="text-sm font-medium">Nenhum contato encontrado</p>
+                            <p className="text-xs text-muted-foreground">
+                              Tente buscar por outro nome, categoria ou endereço.
+                            </p>
+                          </div>
+                        </div>
+                      )
                     ) : (
                       <div className="flex h-[420px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed text-center">
                         <Search className="size-8 text-muted-foreground" />
@@ -210,32 +300,19 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
                           {index + 1}
                         </div>
                       </MarkerContent>
-                      <MarkerPopup
-                        offset={selectedContactId === contact.id ? 28 : 18}
-                        className="w-80 max-w-[min(22rem,calc(100vw-2rem))] rounded-xl p-4 shadow-lg"
-                      >
-                        <div className="min-w-0">
-                          <p className="line-clamp-2 text-base font-semibold leading-5">
-                            {contact.name}
-                          </p>
-                          {contact.address ? (
-                            <p className="mt-2 line-clamp-2 text-sm leading-5 text-muted-foreground">
-                              {contact.address}
-                            </p>
-                          ) : null}
-                          <a
-                            href={getGoogleMapsUrl(contact)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mt-3 inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-                          >
-                            Ver no Maps
-                            <ExternalLink className="size-4" />
-                          </a>
-                        </div>
-                      </MarkerPopup>
                     </MapMarker>
                   ))}
+                  {selectedContact ? (
+                    <MapPopup
+                      longitude={selectedContact.longitude as number}
+                      latitude={selectedContact.latitude as number}
+                      offset={28}
+                      closeOnClick={false}
+                      className="w-80 max-w-[min(22rem,calc(100vw-2rem))] rounded-xl p-4 shadow-lg"
+                    >
+                      <ContactMapPopup contact={selectedContact} />
+                    </MapPopup>
+                  ) : null}
                 </Map>
               </Card>
             </div>
@@ -243,6 +320,30 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
         ) : null}
       </div>
     </>
+  )
+}
+
+function ContactMapPopup({ contact }: { contact: Contact }) {
+  return (
+    <div className="min-w-0">
+      <p className="line-clamp-2 text-base font-semibold leading-5">
+        {contact.name}
+      </p>
+      {contact.address ? (
+        <p className="mt-2 line-clamp-2 text-sm leading-5 text-muted-foreground">
+          {contact.address}
+        </p>
+      ) : null}
+      <a
+        href={getGoogleMapsUrl(contact)}
+        target="_blank"
+        rel="noreferrer"
+        className="mt-3 inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+      >
+        Ver no Maps
+        <ExternalLink className="size-4" />
+      </a>
+    </div>
   )
 }
 
