@@ -12,7 +12,6 @@ import {
   MapPin,
   Phone,
   Search,
-  Share2,
   Star,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -55,6 +54,170 @@ function getGoogleMapsUrl(contact: Contact) {
 
   const query = [contact.name, contact.address].filter(Boolean).join(' ')
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+}
+
+function slugify(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '') || 'contatos'
+}
+
+function downloadBlob(content: BlobPart, filename: string, type: string) {
+  const blob = content instanceof Blob ? content : new Blob([content], { type })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+function buildContactsCsv(contacts: Contact[]) {
+  const headers = [
+    'Nome',
+    'Categoria',
+    'Endereço',
+    'Telefone',
+    'Website',
+    'Avaliação',
+    'Qtd. avaliações',
+    'Instagram',
+    'Facebook',
+    'LinkedIn',
+    'Google Maps',
+    'Latitude',
+    'Longitude',
+  ]
+  const rows = contacts.map((contact) => [
+    contact.name,
+    contact.category,
+    contact.address,
+    contact.phone,
+    contact.website,
+    contact.rating,
+    contact.reviews_count,
+    contact.instagram,
+    contact.facebook,
+    contact.linkedin,
+    getGoogleMapsUrl(contact),
+    contact.latitude,
+    contact.longitude,
+  ])
+
+  return `\uFEFF${[headers, ...rows]
+    .map((row) => row.map((value) => escapeCsvValue(value)).join(','))
+    .join('\n')}`
+}
+
+function escapeCsvValue(value: unknown) {
+  const stringValue = value === undefined || value === null ? '' : String(value)
+  return `"${stringValue.replaceAll('"', '""')}"`
+}
+
+function buildContactsPdf(list: LeadList, contacts: Contact[]) {
+  const pages: Array<Array<{ text: string; size: number }>> = []
+  const currentPage = () => pages[pages.length - 1]
+  const addPage = () => pages.push([])
+  const addLine = (text: string, size = 10) => {
+    if (!pages.length || currentPage().length >= 48) addPage()
+    currentPage().push({ text, size })
+  }
+
+  addLine(list.name, 18)
+  addLine(
+    [list.search_term, list.location ? `em ${list.location}` : null]
+      .filter(Boolean)
+      .join(' '),
+    11,
+  )
+  addLine(`${contacts.length} contatos exportados`, 11)
+  addLine('', 10)
+
+  contacts.forEach((contact, index) => {
+    addLine(`${index + 1}. ${contact.name}`, 13)
+    if (contact.category) addLine(`Categoria: ${contact.category}`)
+    if (contact.rating) addLine(`Avaliacao: ${contact.rating}`)
+    if (contact.phone) addLine(`Telefone: ${contact.phone}`)
+    if (contact.address) wrapPdfLine(`Endereco: ${contact.address}`).forEach((line) => addLine(line))
+    if (contact.website) wrapPdfLine(`Website: ${contact.website}`).forEach((line) => addLine(line))
+    wrapPdfLine(`Maps: ${getGoogleMapsUrl(contact)}`).forEach((line) => addLine(line))
+    addLine('', 10)
+  })
+
+  return new Blob([createPdfDocument(pages)], { type: 'application/pdf' })
+}
+
+function wrapPdfLine(value: string, maxLength = 82) {
+  const words = value.split(/\s+/)
+  const lines: string[] = []
+  let currentLine = ''
+
+  words.forEach((word) => {
+    const nextLine = currentLine ? `${currentLine} ${word}` : word
+    if (nextLine.length > maxLength && currentLine) {
+      lines.push(currentLine)
+      currentLine = word
+    } else {
+      currentLine = nextLine
+    }
+  })
+
+  if (currentLine) lines.push(currentLine)
+  return lines
+}
+
+function createPdfDocument(pages: Array<Array<{ text: string; size: number }>>) {
+  const objects: string[] = []
+  objects.push('<< /Type /Catalog /Pages 2 0 R >>')
+
+  const pageObjectIds = pages.map((_, index) => 4 + index * 2)
+  objects.push(`<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pages.length} >>`)
+  objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')
+
+  pages.forEach((pageLines, index) => {
+    const pageObjectId = 4 + index * 2
+    const contentObjectId = pageObjectId + 1
+    const stream = pageLines
+      .map((line, lineIndex) => {
+        const y = 800 - lineIndex * 15
+        return `BT /F1 ${line.size} Tf 40 ${y} Td (${escapePdfText(line.text)}) Tj ET`
+      })
+      .join('\n')
+
+    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentObjectId} 0 R >>`)
+    objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`)
+  })
+
+  let pdf = '%PDF-1.4\n'
+  const offsets = [0]
+  objects.forEach((object, index) => {
+    offsets.push(pdf.length)
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`
+  })
+  const xrefOffset = pdf.length
+  pdf += `xref\n0 ${objects.length + 1}\n`
+  pdf += '0000000000 65535 f \n'
+  offsets.slice(1).forEach((offset) => {
+    pdf += `${String(offset).padStart(10, '0')} 00000 n \n`
+  })
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
+
+  return pdf
+}
+
+function escapePdfText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7E]/g, '')
+    .replace(/\\/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)')
 }
 
 export default function LeadListPage({ params }: { params: Promise<{ id: string }> }) {
@@ -155,6 +318,30 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
     return () => window.clearInterval(interval)
   }, [list, loadList])
 
+  function handleExport(format: 'csv' | 'pdf') {
+    if (!list) return
+    if (!filteredContacts.length) {
+      toast.error('Não há contatos para exportar.')
+      return
+    }
+
+    const filename = `${slugify(list.name)}-contatos`
+    if (format === 'csv') {
+      downloadBlob(
+        buildContactsCsv(filteredContacts),
+        `${filename}.csv`,
+        'text/csv;charset=utf-8',
+      )
+      return
+    }
+
+    downloadBlob(
+      buildContactsPdf(list, filteredContacts),
+      `${filename}.pdf`,
+      'application/pdf',
+    )
+  }
+
   return (
     <>
       <DashboardHeader title={list?.name ?? 'Lista'} />
@@ -199,20 +386,16 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-40">
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => handleExport('csv')}>
                         <Download className="size-4" />
                         CSV
                       </DropdownMenuItem>
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => handleExport('pdf')}>
                         <FileText className="size-4" />
                         PDF
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  <Button type="button" variant="outline" size="sm">
-                    <Share2 className="size-4" />
-                    Compartilhar
-                  </Button>
                 </div>
               </div>
             </div>

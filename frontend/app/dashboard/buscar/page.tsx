@@ -4,7 +4,9 @@ import * as React from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  Check,
   CheckCircle2,
+  ChevronsUpDown,
   ListChecks,
   Loader2,
   Plus,
@@ -18,6 +20,14 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -28,10 +38,65 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { normalizeList, statusLabel, type LeadList } from "@/lib/leads";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
+
+const KEYWORD_SUGGESTIONS = [
+  "restaurantes japoneses",
+  "restaurantes",
+  "pizzarias",
+  "padarias",
+  "cafeterias",
+  "clínicas odontológicas",
+  "clínicas veterinárias",
+  "academias",
+  "imobiliárias",
+  "autopeças",
+  "oficinas mecânicas",
+  "salões de beleza",
+  "contabilidades",
+  "escolas particulares",
+  "pet shops",
+  "farmácias",
+  "fornecedores de parafusos",
+  "distribuidoras",
+  "supermercados",
+  "hotéis",
+  "lojas de móveis",
+  "construtoras",
+  "marcenarias",
+];
+
+type IbgeMunicipality = {
+  id: number;
+  nome: string;
+  microrregiao?: {
+    mesorregiao?: {
+      UF?: {
+        sigla?: string;
+      };
+    };
+  };
+};
+
+type ComboboxOption = {
+  value: string;
+  label: string;
+};
+
+function normalizeSearchValue(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
 
 export default function SearchPage() {
   const { authFetch } = useAuth();
@@ -39,6 +104,11 @@ export default function SearchPage() {
   const [loadingLists, setLoadingLists] = React.useState(true);
   const [creating, setCreating] = React.useState(false);
   const [createDialogOpen, setCreateDialogOpen] = React.useState(false);
+  const [searchTerm, setSearchTerm] = React.useState("");
+  const [location, setLocation] = React.useState("");
+  const [cityOptions, setCityOptions] = React.useState<ComboboxOption[]>([]);
+  const [loadingCities, setLoadingCities] = React.useState(false);
+  const [citiesLoaded, setCitiesLoaded] = React.useState(false);
   const totalLists = lists.length;
   const completedLists = lists.filter(
     (list) => list.status === "completed",
@@ -73,6 +143,45 @@ export default function SearchPage() {
     void loadLists();
   }, [loadLists]);
 
+  const loadCities = React.useCallback(async () => {
+    if (citiesLoaded || loadingCities) return;
+
+    setLoadingCities(true);
+    try {
+      const response = await fetch(
+        "https://servicodados.ibge.gov.br/api/v1/localidades/municipios?orderBy=nome",
+      );
+      const payload = (await response.json()) as IbgeMunicipality[];
+
+      if (!response.ok || !Array.isArray(payload)) {
+        throw new Error("Não foi possível carregar as cidades do IBGE.");
+      }
+
+      setCityOptions(
+        payload
+          .map((city) => {
+            const uf = city.microrregiao?.mesorregiao?.UF?.sigla;
+            return uf
+              ? {
+                  value: `${city.nome}, ${uf}`,
+                  label: `${city.nome}, ${uf}`,
+                }
+              : null;
+          })
+          .filter((city): city is ComboboxOption => Boolean(city)),
+      );
+      setCitiesLoaded(true);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Erro ao carregar cidades do IBGE.",
+      );
+    } finally {
+      setLoadingCities(false);
+    }
+  }, [citiesLoaded, loadingCities]);
+
   async function handleCreateList(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -80,15 +189,26 @@ export default function SearchPage() {
 
     const formData = new FormData(form);
     const name = String(formData.get("name") ?? "");
-    const searchTerm = String(formData.get("searchTerm") ?? "");
-    const location = String(formData.get("location") ?? "");
+    const currentSearchTerm = String(formData.get("searchTerm") ?? "").trim();
+    const currentLocation = String(formData.get("location") ?? "").trim();
     const maxResults = Number(formData.get("maxResults") ?? 30);
+
+    if (!currentSearchTerm) {
+      toast.error("Informe uma palavra-chave para criar a lista.");
+      setCreating(false);
+      return;
+    }
 
     try {
       const response = await authFetch("/api/lead-lists", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, searchTerm, location, maxResults }),
+        body: JSON.stringify({
+          name,
+          searchTerm: currentSearchTerm,
+          location: currentLocation,
+          maxResults,
+        }),
       });
       const payload = await response.json().catch(() => null);
 
@@ -103,6 +223,8 @@ export default function SearchPage() {
       ]);
       toast.success("Lista criada. A busca foi iniciada.");
       setCreateDialogOpen(false);
+      setSearchTerm("");
+      setLocation("");
       form.reset();
     } catch (error) {
       toast.error(
@@ -156,20 +278,40 @@ export default function SearchPage() {
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="searchTerm">Palavra-chave</FieldLabel>
-                    <Input
+                    <SuggestionCombobox
                       id="searchTerm"
                       name="searchTerm"
+                      value={searchTerm}
+                      onValueChange={setSearchTerm}
+                      options={KEYWORD_SUGGESTIONS.map((keyword) => ({
+                        value: keyword,
+                        label: keyword,
+                      }))}
                       placeholder="restaurantes japoneses"
-                      required
+                      searchPlaceholder="Buscar ou escrever palavra-chave..."
+                      emptyLabel="Digite para usar uma palavra-chave própria."
+                      customLabel="Usar palavra-chave"
                     />
                   </Field>
                   <div className="grid gap-4 sm:grid-cols-[1fr_160px]">
                     <Field>
                       <FieldLabel htmlFor="location">Localização</FieldLabel>
-                      <Input
+                      <SuggestionCombobox
                         id="location"
                         name="location"
+                        value={location}
+                        onValueChange={setLocation}
+                        options={cityOptions}
                         placeholder="São Paulo, SP"
+                        searchPlaceholder="Buscar cidade..."
+                        emptyLabel={
+                          loadingCities
+                            ? "Carregando cidades..."
+                            : "Digite para usar uma localização própria."
+                        }
+                        customLabel="Usar localização"
+                        loading={loadingCities}
+                        onOpen={loadCities}
                       />
                     </Field>
                     <Field>
@@ -378,5 +520,143 @@ function LeadListCard({ list }: { list: LeadList }) {
         </div>
       </div>
     </Link>
+  );
+}
+
+function SuggestionCombobox({
+  id,
+  name,
+  value,
+  onValueChange,
+  options,
+  placeholder,
+  searchPlaceholder,
+  emptyLabel,
+  customLabel,
+  loading = false,
+  onOpen,
+}: {
+  id: string;
+  name: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  options: ComboboxOption[];
+  placeholder: string;
+  searchPlaceholder: string;
+  emptyLabel: string;
+  customLabel: string;
+  loading?: boolean;
+  onOpen?: () => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const normalizedQuery = normalizeSearchValue(query.trim());
+  const normalizedValue = normalizeSearchValue(value);
+
+  const filteredOptions = React.useMemo(() => {
+    if (!normalizedQuery) return options.slice(0, 12);
+
+    return options
+      .filter((option) =>
+        normalizeSearchValue(option.label).includes(normalizedQuery),
+      )
+      .slice(0, 30);
+  }, [normalizedQuery, options]);
+
+  const hasExactOption = options.some(
+    (option) => normalizeSearchValue(option.value) === normalizedQuery,
+  );
+  const customValue = query.trim();
+
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen);
+    if (nextOpen) {
+      setQuery(value);
+      onOpen?.();
+    }
+  }
+
+  function selectValue(nextValue: string) {
+    onValueChange(nextValue);
+    setQuery(nextValue);
+    setOpen(false);
+  }
+
+  return (
+    <>
+      <input type="hidden" name={name} value={value} />
+      <Popover open={open} onOpenChange={handleOpenChange}>
+        <PopoverTrigger asChild>
+          <Button
+            id={id}
+            type="button"
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className={cn(
+              "h-11 w-full justify-between rounded-xl px-4 text-left text-base font-normal shadow-xs md:text-sm",
+              !value && "text-muted-foreground",
+            )}
+          >
+            <span className="truncate">{value || placeholder}</span>
+            <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          className="w-(--radix-popover-trigger-width) p-0"
+        >
+          <Command shouldFilter={false}>
+            <CommandInput
+              value={query}
+              onValueChange={setQuery}
+              placeholder={searchPlaceholder}
+            />
+            <CommandList>
+              <CommandEmpty>{emptyLabel}</CommandEmpty>
+              <CommandGroup>
+                {loading ? (
+                  <CommandItem disabled>
+                    <Loader2 className="size-4 animate-spin" />
+                    Carregando...
+                  </CommandItem>
+                ) : null}
+                {customValue && !hasExactOption ? (
+                  <CommandItem
+                    value={customValue}
+                    onSelect={() => selectValue(customValue)}
+                  >
+                    <Plus className="size-4" />
+                    <span className="truncate">
+                      {customLabel}: {customValue}
+                    </span>
+                  </CommandItem>
+                ) : null}
+                {filteredOptions.map((option) => {
+                  const selected =
+                    normalizeSearchValue(option.value) === normalizedValue;
+
+                  return (
+                    <CommandItem
+                      key={option.value}
+                      value={option.value}
+                      onSelect={() => selectValue(option.value)}
+                    >
+                      <Check
+                        className={cn(
+                          "size-4",
+                          selected ? "opacity-100" : "opacity-0",
+                        )}
+                      />
+                      <span className="truncate">{option.label}</span>
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+    </>
   );
 }
