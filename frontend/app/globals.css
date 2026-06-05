@@ -123,8 +123,7 @@
     @apply bg-background text-foreground;
   }
   .font-brand {
-    font-family: 'Playfair Display', serif;
-    font-optical-sizing: auto;
+    font-family: var(--font-brand), 'JetBrains Mono', monospace;
     font-style: normal;
   }
   a[href],

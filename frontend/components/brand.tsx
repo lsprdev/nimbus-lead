@@ -44,7 +44,7 @@ export function BrandWordmark({ className }: { className?: string }) {
     <div className={cn("flex items-center gap-2", className)}>
       <BrandLogo />
       <span className="font-brand text-lg font-semibold tracking-tight">
-        Karta Leads
+        Karta Pro
       </span>
     </div>
   );
