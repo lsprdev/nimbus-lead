@@ -68,37 +68,51 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
   const contactCardRefs = React.useRef(new globalThis.Map<string, HTMLDivElement>())
 
   const normalizedContactQuery = contactQuery.trim().toLowerCase()
-  const filteredContacts = normalizedContactQuery
-    ? contacts.filter((contact) =>
-        [
-          contact.name,
-          contact.category,
-          contact.address,
-          contact.phone,
-          contact.website,
-        ]
-          .filter(Boolean)
-          .some((value) => value?.toLowerCase().includes(normalizedContactQuery)),
-      )
-    : contacts
-  const contactsWithCoords = contacts.filter(hasCoordinates)
-  const selectedContact = contactsWithCoords.find((contact) => contact.id === selectedContactId)
+  const filteredContacts = React.useMemo(
+    () =>
+      normalizedContactQuery
+        ? contacts.filter((contact) =>
+            [
+              contact.name,
+              contact.category,
+              contact.address,
+              contact.phone,
+              contact.website,
+            ]
+              .filter(Boolean)
+              .some((value) => value?.toLowerCase().includes(normalizedContactQuery)),
+          )
+        : contacts,
+    [contacts, normalizedContactQuery],
+  )
+  const contactsWithCoords = React.useMemo(
+    () => contacts.filter(hasCoordinates),
+    [contacts],
+  )
+  const selectedContact = React.useMemo(
+    () => contactsWithCoords.find((contact) => contact.id === selectedContactId),
+    [contactsWithCoords, selectedContactId],
+  )
   const firstContact = contactsWithCoords[0]
   const center: [number, number] = firstContact
     ? [firstContact.longitude as number, firstContact.latitude as number]
     : fallbackCenter
 
   const selectContact = React.useCallback((contactId: string, scrollIntoList = false) => {
-    setSelectedContactId(contactId)
+    setSelectedContactId((currentContactId) => {
+      const nextContactId = currentContactId === contactId ? null : contactId
 
-    if (scrollIntoList) {
-      window.requestAnimationFrame(() => {
-        contactCardRefs.current.get(contactId)?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'nearest',
+      if (nextContactId && scrollIntoList) {
+        window.requestAnimationFrame(() => {
+          contactCardRefs.current.get(nextContactId)?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest',
+          })
         })
-      })
-    }
+      }
+
+      return nextContactId
+    })
   }, [])
 
   const loadList = React.useCallback(async () => {
@@ -276,8 +290,7 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
                   className="h-full"
                 >
                   <MapControls showCompass showFullscreen />
-                  <FitMapToContacts contacts={contactsWithCoords} />
-                  <FocusMapOnContact contact={selectedContact} />
+                  <FocusMapOnContact contact={selectedContact} contacts={contactsWithCoords} />
                   {contactsWithCoords.map((contact, index) => (
                     <MapMarker
                       key={contact.id}
@@ -347,63 +360,68 @@ function ContactMapPopup({ contact }: { contact: Contact }) {
   )
 }
 
-function FitMapToContacts({ contacts }: { contacts: Contact[] }) {
+function FocusMapOnContact({
+  contact,
+  contacts,
+}: {
+  contact?: Contact
+  contacts: Contact[]
+}) {
   const { map, isLoaded } = useMap()
   const boundsKey = React.useMemo(
     () =>
       contacts
-        .map((contact) => `${contact.id}:${contact.latitude},${contact.longitude}`)
+        .map((currentContact) => `${currentContact.id}:${currentContact.latitude},${currentContact.longitude}`)
         .join('|'),
     [contacts],
   )
 
   React.useEffect(() => {
-    if (!map || !isLoaded || contacts.length === 0) return
+    if (!map || !isLoaded) return
 
-    if (contacts.length === 1) {
-      const contact = contacts[0]
-      map.easeTo({
-        center: [contact.longitude as number, contact.latitude as number],
-        zoom: 15,
-        duration: 600,
-      })
+    if (!contact || !hasCoordinates(contact)) {
+      fitMapToContacts(map, contacts)
       return
     }
-
-    const first = contacts[0]
-    const bounds = contacts.slice(1).reduce(
-      (currentBounds, contact) =>
-        currentBounds.extend([contact.longitude as number, contact.latitude as number]),
-      new maplibregl.LngLatBounds(
-        [first.longitude as number, first.latitude as number],
-        [first.longitude as number, first.latitude as number],
-      ),
-    )
-
-    map.fitBounds(bounds, {
-      padding: 70,
-      maxZoom: 15,
-      duration: 700,
-    })
-  }, [boundsKey, contacts, isLoaded, map])
-
-  return null
-}
-
-function FocusMapOnContact({ contact }: { contact?: Contact }) {
-  const { map, isLoaded } = useMap()
-
-  React.useEffect(() => {
-    if (!map || !isLoaded || !contact || !hasCoordinates(contact)) return
 
     map.easeTo({
       center: [contact.longitude as number, contact.latitude as number],
       zoom: 15,
       duration: 600,
     })
-  }, [contact, isLoaded, map])
+  }, [boundsKey, contact, contacts, isLoaded, map])
 
   return null
+}
+
+function fitMapToContacts(map: maplibregl.Map, contacts: Contact[]) {
+  if (contacts.length === 0) return
+
+  if (contacts.length === 1) {
+    const contact = contacts[0]
+    map.easeTo({
+      center: [contact.longitude as number, contact.latitude as number],
+      zoom: 15,
+      duration: 600,
+    })
+    return
+  }
+
+  const first = contacts[0]
+  const bounds = contacts.slice(1).reduce(
+    (currentBounds, contact) =>
+      currentBounds.extend([contact.longitude as number, contact.latitude as number]),
+    new maplibregl.LngLatBounds(
+      [first.longitude as number, first.latitude as number],
+      [first.longitude as number, first.latitude as number],
+    ),
+  )
+
+  map.fitBounds(bounds, {
+    padding: 70,
+    maxZoom: 15,
+    duration: 700,
+  })
 }
 
 function ContactCard({
