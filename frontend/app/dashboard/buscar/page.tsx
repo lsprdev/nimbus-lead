@@ -4,7 +4,6 @@ import * as React from "react";
 import Link from "next/link";
 import {
   ArrowRight,
-  Activity,
   Check,
   CheckCircle2,
   ChevronsUpDown,
@@ -12,8 +11,6 @@ import {
   Loader2,
   Plus,
   Search,
-  Sparkles,
-  Target,
   UsersRound,
   type LucideIcon,
 } from "lucide-react";
@@ -120,17 +117,6 @@ export default function SearchPage() {
     (total, list) => total + list.total_found,
     0,
   );
-  const totalRequested = lists.reduce(
-    (total, list) => total + list.max_results,
-    0,
-  );
-  const activeLists = Math.max(totalLists - completedLists, 0);
-  const completionRate = totalLists
-    ? Math.round((completedLists / totalLists) * 100)
-    : 0;
-  const captureRate = totalRequested
-    ? Math.min(Math.round((totalContacts / totalRequested) * 100), 100)
-    : 0;
 
   const loadLists = React.useCallback(async () => {
     setLoadingLists(true);
@@ -256,10 +242,6 @@ export default function SearchPage() {
           <div className="absolute inset-y-0 right-0 w-1/2 bg-linear-to-l from-primary/10 via-primary/5 to-transparent" />
           <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex max-w-3xl flex-col gap-4">
-              <Badge variant="secondary" className="w-fit gap-1.5 rounded-full">
-                <Sparkles className="size-3.5" />
-                Prospecção inteligente
-              </Badge>
               <div className="flex flex-col gap-2">
                 <h1 className="text-4xl font-semibold tracking-tight text-balance">
                   Buscar contatos
@@ -298,7 +280,9 @@ export default function SearchPage() {
                       />
                     </Field>
                     <Field>
-                      <FieldLabel htmlFor="searchTerm">Palavra-chave</FieldLabel>
+                      <FieldLabel htmlFor="searchTerm">
+                        Palavra-chave
+                      </FieldLabel>
                       <SuggestionCombobox
                         id="searchTerm"
                         name="searchTerm"
@@ -374,32 +358,22 @@ export default function SearchPage() {
           <MetricCard
             title="Total de listas"
             value={totalLists}
-            description={`${activeLists} em andamento`}
             icon={ListChecks}
             loading={loadingLists}
-            progress={totalLists ? 100 : 0}
             tone="blue"
           />
           <MetricCard
             title="Listas concluídas"
             value={completedLists}
-            description={`${completionRate}% finalizadas`}
             icon={CheckCircle2}
             loading={loadingLists}
-            progress={completionRate}
             tone="green"
           />
           <MetricCard
             title="Contatos encontrados"
             value={totalContacts}
-            description={
-              totalRequested
-                ? `${captureRate}% da meta salva`
-                : "Leads disponíveis"
-            }
             icon={UsersRound}
             loading={loadingLists}
-            progress={captureRate}
             tone="violet"
           />
         </div>
@@ -455,33 +429,26 @@ export default function SearchPage() {
 function MetricCard({
   title,
   value,
-  description,
   icon: Icon,
   loading,
-  progress,
   tone,
 }: {
   title: string;
   value: number;
-  description: string;
   icon: LucideIcon;
   loading: boolean;
-  progress: number;
   tone: "blue" | "green" | "violet";
 }) {
   const toneClasses = {
     blue: {
-      bar: "bg-primary",
       icon: "bg-primary/10 text-primary",
       glow: "from-primary/18",
     },
     green: {
-      bar: "bg-emerald-500",
       icon: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
       glow: "from-emerald-500/18",
     },
     violet: {
-      bar: "bg-violet-500",
       icon: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
       glow: "from-violet-500/18",
     },
@@ -505,17 +472,15 @@ function MetricCard({
               {value.toLocaleString("pt-BR")}
             </p>
           )}
-          <p className="text-xs text-muted-foreground">{description}</p>
         </div>
-        <span className={cn("flex size-12 shrink-0 items-center justify-center rounded-2xl", toneClasses.icon)}>
+        <span
+          className={cn(
+            "flex size-12 shrink-0 items-center justify-center rounded-2xl",
+            toneClasses.icon,
+          )}
+        >
           <Icon className="size-5" />
         </span>
-      </div>
-      <div className="relative mt-5 h-2 overflow-hidden rounded-full bg-muted">
-        <div
-          className={cn("h-full rounded-full transition-all", toneClasses.bar)}
-          style={{ width: `${Math.min(Math.max(progress, 0), 100)}%` }}
-        />
       </div>
     </div>
   );
@@ -527,22 +492,36 @@ function LeadListCard({ list }: { list: LeadList }) {
     ? Math.min(Math.round((list.total_found / list.max_results) * 100), 100)
     : 0;
   const isCompleted = list.status === "completed";
+  const contactsLabel = reachedSavedLimit
+    ? `${list.total_found.toLocaleString("pt-BR")} / ${list.max_results.toLocaleString("pt-BR")}`
+    : list.total_found.toLocaleString("pt-BR");
 
   return (
     <Link
       href={`/dashboard/listas/${list.id}`}
-      className="group relative overflow-hidden rounded-3xl border bg-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group relative overflow-hidden rounded-2xl border bg-card/90 p-4 shadow-xs transition hover:-translate-y-0.5 hover:border-primary/35 hover:bg-card hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <div className="absolute inset-y-5 left-0 w-1 rounded-r-full bg-primary opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 items-start gap-5">
-          <span className="mt-1 flex size-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-            <Search className="size-6" strokeWidth={2.25} />
+      <div className="absolute inset-x-0 bottom-0 h-1 bg-muted">
+        <div
+          className="h-full rounded-r-full bg-primary transition-all"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-start gap-4">
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/10">
+            <Search className="size-5" strokeWidth={2.25} />
           </span>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="truncate text-xl font-semibold">{list.name}</p>
-              <Badge variant={isCompleted ? "secondary" : "default"}>
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <p className="truncate text-lg font-semibold tracking-tight">
+                {list.name}
+              </p>
+              <Badge
+                variant={isCompleted ? "secondary" : "default"}
+                className="rounded-full"
+              >
                 {statusLabel(list.status)}
               </Badge>
             </div>
@@ -550,40 +529,20 @@ function LeadListCard({ list }: { list: LeadList }) {
               {list.search_term}
               {list.location ? ` em ${list.location}` : null}
             </p>
-            <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1">
-                <Activity className="size-3.5" />
-                {progress}% coletado
-              </span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1">
-                <Target className="size-3.5" />
-                Meta {list.max_results.toLocaleString("pt-BR")}
-              </span>
-            </div>
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-4 lg:min-w-72">
-          <div className="flex flex-1 flex-col gap-2">
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="text-muted-foreground">Contatos</span>
-              <span className="font-semibold">
-                {list.total_found.toLocaleString("pt-BR")}
-                <span className="font-normal text-muted-foreground">
-                  {reachedSavedLimit
-                    ? ` de ${list.max_results.toLocaleString("pt-BR")}`
-                    : " contatos"}
-                </span>
-              </span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-primary transition-all"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
+        <div className="flex shrink-0 items-center justify-between gap-3 lg:justify-end">
+          <div className="rounded-2xl bg-muted/60 px-4 py-2 text-right">
+            <p className="text-xs text-muted-foreground">Contatos</p>
+            <p className="text-lg font-semibold tracking-tight">
+              {contactsLabel}
+            </p>
+            {!reachedSavedLimit ? (
+              <p className="text-xs text-muted-foreground">salvos</p>
+            ) : null}
           </div>
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground transition group-hover:bg-primary group-hover:text-primary-foreground">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full border bg-background text-muted-foreground transition group-hover:border-primary group-hover:bg-primary group-hover:text-primary-foreground">
             <ArrowRight className="size-5 transition group-hover:translate-x-0.5" />
           </span>
         </div>
