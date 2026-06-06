@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  Activity,
   Check,
   CheckCircle2,
   ChevronsUpDown,
@@ -11,6 +12,8 @@ import {
   Loader2,
   Plus,
   Search,
+  Sparkles,
+  Target,
   UsersRound,
   type LucideIcon,
 } from "lucide-react";
@@ -117,7 +120,17 @@ export default function SearchPage() {
     (total, list) => total + list.total_found,
     0,
   );
+  const totalRequested = lists.reduce(
+    (total, list) => total + list.max_results,
+    0,
+  );
   const activeLists = Math.max(totalLists - completedLists, 0);
+  const completionRate = totalLists
+    ? Math.round((completedLists / totalLists) * 100)
+    : 0;
+  const captureRate = totalRequested
+    ? Math.min(Math.round((totalContacts / totalRequested) * 100), 100)
+    : 0;
 
   const loadLists = React.useCallback(async () => {
     setLoadingLists(true);
@@ -239,113 +252,122 @@ export default function SearchPage() {
     <>
       <DashboardHeader title="Buscar" />
       <div className="flex flex-1 flex-col gap-8 p-4 sm:p-6 lg:p-8">
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div className="flex flex-col gap-1">
-            <h1 className="text-3xl font-semibold tracking-tight text-balance">
-              Buscar contatos
-            </h1>
-            <p className="max-w-2xl text-base text-muted-foreground">
-              Crie uma lista com uma palavra-chave e acompanhe os contatos
-              encontrados no mapa.
-            </p>
-          </div>
+        <div className="relative overflow-hidden rounded-3xl border bg-card p-6 shadow-sm">
+          <div className="absolute inset-y-0 right-0 w-1/2 bg-linear-to-l from-primary/10 via-primary/5 to-transparent" />
+          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex max-w-3xl flex-col gap-4">
+              <Badge variant="secondary" className="w-fit gap-1.5 rounded-full">
+                <Sparkles className="size-3.5" />
+                Prospecção inteligente
+              </Badge>
+              <div className="flex flex-col gap-2">
+                <h1 className="text-4xl font-semibold tracking-tight text-balance">
+                  Buscar contatos
+                </h1>
+                <p className="max-w-2xl text-base text-muted-foreground">
+                  Crie listas por segmento e região, acompanhe o progresso da
+                  coleta e abra os contatos encontrados diretamente no mapa.
+                </p>
+              </div>
+            </div>
 
-          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="size-4" />
-                Nova lista
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Nova lista</DialogTitle>
-                <DialogDescription>
-                  Defina o termo e a localização para iniciar uma busca em
-                  segundo plano.
-                </DialogDescription>
-              </DialogHeader>
-              <form id="create-list-form" onSubmit={handleCreateList}>
-                <FieldGroup className="gap-4">
-                  <Field>
-                    <FieldLabel htmlFor="name">Nome da lista</FieldLabel>
-                    <Input
-                      id="name"
-                      name="name"
-                      placeholder="Restaurantes em São Paulo"
-                      required
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="searchTerm">Palavra-chave</FieldLabel>
-                    <SuggestionCombobox
-                      id="searchTerm"
-                      name="searchTerm"
-                      value={searchTerm}
-                      onValueChange={setSearchTerm}
-                      options={KEYWORD_SUGGESTIONS.map((keyword) => ({
-                        value: keyword,
-                        label: keyword,
-                      }))}
-                      placeholder="restaurantes japoneses"
-                      searchPlaceholder="Buscar ou escrever palavra-chave..."
-                      emptyLabel="Digite para usar uma palavra-chave própria."
-                      customLabel="Usar palavra-chave"
-                    />
-                  </Field>
-                  <div className="grid gap-4 sm:grid-cols-[1fr_160px]">
+            <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+              <DialogTrigger asChild>
+                <Button size="lg" className="w-full gap-2 sm:w-auto">
+                  <Plus className="size-4" />
+                  Nova lista
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Nova lista</DialogTitle>
+                  <DialogDescription>
+                    Defina o termo e a localização para iniciar uma busca em
+                    segundo plano.
+                  </DialogDescription>
+                </DialogHeader>
+                <form id="create-list-form" onSubmit={handleCreateList}>
+                  <FieldGroup className="gap-4">
                     <Field>
-                      <FieldLabel htmlFor="location">Localização</FieldLabel>
-                      <SuggestionCombobox
-                        id="location"
-                        name="location"
-                        value={location}
-                        onValueChange={setLocation}
-                        options={cityOptions}
-                        placeholder="São Paulo, SP"
-                        searchPlaceholder="Buscar cidade..."
-                        emptyLabel={
-                          loadingCities
-                            ? "Carregando cidades..."
-                            : "Digite para usar uma localização própria."
-                        }
-                        customLabel="Usar localização"
-                        loading={loadingCities}
-                        onOpen={loadCities}
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="maxResults">Quantidade</FieldLabel>
+                      <FieldLabel htmlFor="name">Nome da lista</FieldLabel>
                       <Input
-                        id="maxResults"
-                        name="maxResults"
-                        type="number"
-                        min={1}
-                        max={500}
-                        step={1}
-                        defaultValue={30}
+                        id="name"
+                        name="name"
+                        placeholder="Restaurantes em São Paulo"
                         required
                       />
                     </Field>
-                  </div>
-                </FieldGroup>
-              </form>
-              <DialogFooter>
-                <Button
-                  type="submit"
-                  form="create-list-form"
-                  disabled={creating}
-                >
-                  {creating ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Plus className="size-4" />
-                  )}
-                  Criar lista
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+                    <Field>
+                      <FieldLabel htmlFor="searchTerm">Palavra-chave</FieldLabel>
+                      <SuggestionCombobox
+                        id="searchTerm"
+                        name="searchTerm"
+                        value={searchTerm}
+                        onValueChange={setSearchTerm}
+                        options={KEYWORD_SUGGESTIONS.map((keyword) => ({
+                          value: keyword,
+                          label: keyword,
+                        }))}
+                        placeholder="restaurantes japoneses"
+                        searchPlaceholder="Buscar ou escrever palavra-chave..."
+                        emptyLabel="Digite para usar uma palavra-chave própria."
+                        customLabel="Usar palavra-chave"
+                      />
+                    </Field>
+                    <div className="grid gap-4 sm:grid-cols-[1fr_160px]">
+                      <Field>
+                        <FieldLabel htmlFor="location">Localização</FieldLabel>
+                        <SuggestionCombobox
+                          id="location"
+                          name="location"
+                          value={location}
+                          onValueChange={setLocation}
+                          options={cityOptions}
+                          placeholder="São Paulo, SP"
+                          searchPlaceholder="Buscar cidade..."
+                          emptyLabel={
+                            loadingCities
+                              ? "Carregando cidades..."
+                              : "Digite para usar uma localização própria."
+                          }
+                          customLabel="Usar localização"
+                          loading={loadingCities}
+                          onOpen={loadCities}
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="maxResults">Quantidade</FieldLabel>
+                        <Input
+                          id="maxResults"
+                          name="maxResults"
+                          type="number"
+                          min={1}
+                          max={500}
+                          step={1}
+                          defaultValue={30}
+                          required
+                        />
+                      </Field>
+                    </div>
+                  </FieldGroup>
+                </form>
+                <DialogFooter>
+                  <Button
+                    type="submit"
+                    form="create-list-form"
+                    disabled={creating}
+                  >
+                    {creating ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Plus className="size-4" />
+                    )}
+                    Criar lista
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
@@ -355,22 +377,29 @@ export default function SearchPage() {
             description={`${activeLists} em andamento`}
             icon={ListChecks}
             loading={loadingLists}
+            progress={totalLists ? 100 : 0}
             tone="blue"
           />
           <MetricCard
             title="Listas concluídas"
             value={completedLists}
-            description="Buscas finalizadas"
+            description={`${completionRate}% finalizadas`}
             icon={CheckCircle2}
             loading={loadingLists}
+            progress={completionRate}
             tone="green"
           />
           <MetricCard
             title="Contatos encontrados"
             value={totalContacts}
-            description="Leads disponíveis"
+            description={
+              totalRequested
+                ? `${captureRate}% da meta salva`
+                : "Leads disponíveis"
+            }
             icon={UsersRound}
             loading={loadingLists}
+            progress={captureRate}
             tone="violet"
           />
         </div>
@@ -429,6 +458,7 @@ function MetricCard({
   description,
   icon: Icon,
   loading,
+  progress,
   tone,
 }: {
   title: string;
@@ -436,43 +466,56 @@ function MetricCard({
   description: string;
   icon: LucideIcon;
   loading: boolean;
+  progress: number;
   tone: "blue" | "green" | "violet";
 }) {
+  const toneClasses = {
+    blue: {
+      bar: "bg-primary",
+      icon: "bg-primary/10 text-primary",
+      glow: "from-primary/18",
+    },
+    green: {
+      bar: "bg-emerald-500",
+      icon: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+      glow: "from-emerald-500/18",
+    },
+    violet: {
+      bar: "bg-violet-500",
+      icon: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+      glow: "from-violet-500/18",
+    },
+  }[tone];
+
   return (
-    <div className="overflow-hidden rounded-2xl border bg-card shadow-xs">
+    <div className="relative overflow-hidden rounded-3xl border bg-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
       <div
         className={cn(
-          "h-1",
-          tone === "blue" && "bg-blue-500",
-          tone === "green" && "bg-emerald-500",
-          tone === "violet" && "bg-violet-500",
+          "absolute inset-x-0 top-0 h-24 bg-linear-to-b to-transparent",
+          toneClasses.glow,
         )}
       />
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex flex-col gap-1 p-5">
-          <p className="text-sm text-muted-foreground">{title}</p>
+      <div className="relative flex items-start justify-between gap-4">
+        <div className="flex min-w-0 flex-col gap-2">
+          <p className="text-sm font-medium text-muted-foreground">{title}</p>
           {loading ? (
             <Skeleton className="h-8 w-16" />
           ) : (
-            <p className="text-3xl font-semibold tracking-tight">
+            <p className="text-4xl font-semibold tracking-tight">
               {value.toLocaleString("pt-BR")}
             </p>
           )}
           <p className="text-xs text-muted-foreground">{description}</p>
         </div>
-        <span
-          className={cn(
-            "mr-5 flex size-11 shrink-0 items-center justify-center rounded-xl",
-            tone === "blue" &&
-              "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-            tone === "green" &&
-              "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-            tone === "violet" &&
-              "bg-violet-500/10 text-violet-600 dark:text-violet-400",
-          )}
-        >
+        <span className={cn("flex size-12 shrink-0 items-center justify-center rounded-2xl", toneClasses.icon)}>
           <Icon className="size-5" />
         </span>
+      </div>
+      <div className="relative mt-5 h-2 overflow-hidden rounded-full bg-muted">
+        <div
+          className={cn("h-full rounded-full transition-all", toneClasses.bar)}
+          style={{ width: `${Math.min(Math.max(progress, 0), 100)}%` }}
+        />
       </div>
     </div>
   );
@@ -480,43 +523,69 @@ function MetricCard({
 
 function LeadListCard({ list }: { list: LeadList }) {
   const reachedSavedLimit = list.total_found <= list.max_results;
+  const progress = list.max_results
+    ? Math.min(Math.round((list.total_found / list.max_results) * 100), 100)
+    : 0;
+  const isCompleted = list.status === "completed";
 
   return (
     <Link
       href={`/dashboard/listas/${list.id}`}
-      className="group relative overflow-hidden rounded-2xl border bg-card p-5 shadow-xs transition hover:border-primary/40 hover:bg-primary/5 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group relative overflow-hidden rounded-3xl border bg-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <span className="absolute inset-y-4 left-0 w-1 rounded-r-full bg-primary opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex min-w-0 items-start gap-4">
-          <span className="flex size-11 mt-1 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground">
-            <Search
-              className="size-5 -translate-x-0.5 -translate-y-0.5"
-              strokeWidth={2.25}
-            />
+      <div className="absolute inset-y-5 left-0 w-1 rounded-r-full bg-primary opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-start gap-5">
+          <span className="mt-1 flex size-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <Search className="size-6" strokeWidth={2.25} />
           </span>
-          <div className="min-w-0 space-y-1">
-            <p className="truncate text-lg font-semibold">{list.name}</p>
-            <p className="text-sm text-muted-foreground">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="truncate text-xl font-semibold">{list.name}</p>
+              <Badge variant={isCompleted ? "secondary" : "default"}>
+                {statusLabel(list.status)}
+              </Badge>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
               {list.search_term}
               {list.location ? ` em ${list.location}` : null}
             </p>
+            <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1">
+                <Activity className="size-3.5" />
+                {progress}% coletado
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1">
+                <Target className="size-3.5" />
+                Meta {list.max_results.toLocaleString("pt-BR")}
+              </span>
+            </div>
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-3 md:pl-4">
-          <Badge variant="secondary">{statusLabel(list.status)}</Badge>
-          <div className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
-            <span className="font-semibold text-foreground">
-              {list.total_found.toLocaleString("pt-BR")}
-            </span>
-            {reachedSavedLimit ? (
-              <> de {list.max_results.toLocaleString("pt-BR")}</>
-            ) : (
-              <> contatos</>
-            )}
+        <div className="flex shrink-0 items-center gap-4 lg:min-w-72">
+          <div className="flex flex-1 flex-col gap-2">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-muted-foreground">Contatos</span>
+              <span className="font-semibold">
+                {list.total_found.toLocaleString("pt-BR")}
+                <span className="font-normal text-muted-foreground">
+                  {reachedSavedLimit
+                    ? ` de ${list.max_results.toLocaleString("pt-BR")}`
+                    : " contatos"}
+                </span>
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-primary transition-all"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
           </div>
-          <ArrowRight className="size-5 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-primary" />
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground transition group-hover:bg-primary group-hover:text-primary-foreground">
+            <ArrowRight className="size-5 transition group-hover:translate-x-0.5" />
+          </span>
         </div>
       </div>
     </Link>

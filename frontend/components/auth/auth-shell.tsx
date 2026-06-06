@@ -4,6 +4,7 @@ import { Quote } from "lucide-react";
 import { BrandWordmark } from "@/components/brand";
 import AITextLoading from "@/components/kokonutui/ai-text-loading";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Component as EtherealShadow } from "@/components/ui/etheral-shadow";
 
 const LEAD_LOADING_PHRASES = [
   "Encontrando contatos em São Paulo, SP...",
@@ -47,14 +48,22 @@ export function AuthShell({
       {/* Painel decorativo */}
       <div className="relative hidden flex-col justify-between overflow-hidden bg-primary p-12 text-primary-foreground lg:flex">
         <ThemeToggle className="absolute right-8 top-8 z-10 text-primary-foreground hover:bg-primary-foreground/15 hover:text-primary-foreground" />
-        <div className="auth-dot-wave" aria-hidden="true" />
-        <div
-          className="absolute inset-0 opacity-[0.07]"
+        <EtherealShadow
+          color="rgba(4, 22, 58, 0.55)"
+          animation={{ scale: 92, speed: 62 }}
+          noise={{ opacity: 0.18, scale: 1.1 }}
+          sizing="fill"
           style={{
-            backgroundImage:
-              "radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)",
-            backgroundSize: "24px 24px",
+            position: "absolute",
+            inset: "-12%",
+            height: "124%",
+            width: "124%",
+            opacity: 0.85,
+            mixBlendMode: "multiply",
           }}
+        />
+        <div
+          className="absolute inset-0 bg-linear-to-br from-primary/10 via-primary/20 to-primary/40"
           aria-hidden="true"
         />
         <div className="relative" />
