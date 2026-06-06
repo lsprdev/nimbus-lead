@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"log"
+	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"leads-finder/internal/scraper"
@@ -22,6 +25,25 @@ const (
 	maxMaxResults       = 500
 )
 
+var errSearchPaused = errors.New("search paused")
+
+type searchJob struct {
+	ListId     string
+	UserId     string
+	SearchTerm string
+	Location   string
+	MaxResults int
+}
+
+type searchJobManager struct {
+	app     core.App
+	jobs    chan searchJob
+	queued  sync.Map
+	running sync.Map
+	paused  sync.Map
+	once    sync.Once
+}
+
 type createListRequest struct {
 	Name       string `json:"name"`
 	SearchTerm string `json:"searchTerm"`
@@ -30,17 +52,133 @@ type createListRequest struct {
 }
 
 func Register(app core.App) {
+	manager := newSearchJobManager(app)
+
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
-		e.Router.POST("/api/lead-lists", createLeadList(app)).Bind(apis.RequireAuth("users"))
+		e.Router.POST("/api/lead-lists", createLeadList(app, manager)).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/lead-lists", listLeadLists(app)).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/lead-lists/{id}", getLeadList(app)).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/lead-lists/{id}/contacts", listContacts(app)).Bind(apis.RequireAuth("users"))
+		e.Router.POST("/api/lead-lists/{id}/pause", pauseLeadList(app, manager)).Bind(apis.RequireAuth("users"))
+		e.Router.POST("/api/lead-lists/{id}/resume", resumeLeadList(app, manager)).Bind(apis.RequireAuth("users"))
+
+		manager.start()
+		manager.enqueueRecoverableJobs()
 
 		return e.Next()
 	})
 }
 
-func createLeadList(app core.App) func(*core.RequestEvent) error {
+func newSearchJobManager(app core.App) *searchJobManager {
+	return &searchJobManager{
+		app:  app,
+		jobs: make(chan searchJob, 100),
+	}
+}
+
+func (m *searchJobManager) start() {
+	m.once.Do(func() {
+		workerCount := scraperConcurrency()
+		for i := 0; i < workerCount; i++ {
+			go m.worker(i + 1)
+		}
+		log.Printf("scraper worker pool started with %d worker(s)", workerCount)
+	})
+}
+
+func (m *searchJobManager) worker(workerId int) {
+	for job := range m.jobs {
+		m.queued.Delete(job.ListId)
+
+		record, err := m.app.FindRecordById(collectionLeadLists, job.ListId)
+		if err != nil {
+			log.Printf("worker %d skipped missing lead list %s: %v", workerId, job.ListId, err)
+			continue
+		}
+		if record.GetString("status") == "paused" || m.isPaused(job.ListId) {
+			continue
+		}
+
+		m.running.Store(job.ListId, struct{}{})
+		runSearchJob(m.app, job.ListId, job.UserId, job.SearchTerm, job.Location, job.MaxResults, func() bool {
+			return m.isPaused(job.ListId)
+		})
+		m.running.Delete(job.ListId)
+	}
+}
+
+func (m *searchJobManager) enqueue(job searchJob) {
+	if job.ListId == "" {
+		return
+	}
+	if _, ok := m.running.Load(job.ListId); ok {
+		return
+	}
+	if _, loaded := m.queued.LoadOrStore(job.ListId, struct{}{}); loaded {
+		return
+	}
+
+	select {
+	case m.jobs <- job:
+	default:
+		m.queued.Delete(job.ListId)
+		log.Printf("scraper job queue is full; list %s was not enqueued", job.ListId)
+	}
+}
+
+func (m *searchJobManager) markPaused(listId string) {
+	m.paused.Store(listId, struct{}{})
+}
+
+func (m *searchJobManager) markResumed(listId string) {
+	m.paused.Delete(listId)
+}
+
+func (m *searchJobManager) isPaused(listId string) bool {
+	_, ok := m.paused.Load(listId)
+	return ok
+}
+
+func (m *searchJobManager) enqueueRecoverableJobs() {
+	records, err := m.app.FindRecordsByFilter(
+		collectionLeadLists,
+		"status = 'pending' || status = 'running'",
+		"created",
+		500,
+		0,
+	)
+	if err != nil {
+		log.Printf("recover scraper jobs failed: %v", err)
+		return
+	}
+
+	for _, record := range records {
+		m.enqueue(searchJobFromRecord(record))
+	}
+}
+
+func searchJobFromRecord(record *core.Record) searchJob {
+	return searchJob{
+		ListId:     record.Id,
+		UserId:     record.GetString("user"),
+		SearchTerm: record.GetString("search_term"),
+		Location:   record.GetString("location"),
+		MaxResults: normalizeMaxResults(record.GetInt("max_results")),
+	}
+}
+
+func scraperConcurrency() int {
+	value, _ := strconv.Atoi(os.Getenv("SCRAPER_CONCURRENCY"))
+	if value <= 0 {
+		return 2
+	}
+	if value > 10 {
+		return 10
+	}
+	return value
+}
+
+func createLeadList(app core.App, manager *searchJobManager) func(*core.RequestEvent) error {
 	return func(e *core.RequestEvent) error {
 		var payload createListRequest
 		if err := e.BindBody(&payload); err != nil {
@@ -67,14 +205,20 @@ func createLeadList(app core.App) func(*core.RequestEvent) error {
 		record.Set("search_term", payload.SearchTerm)
 		record.Set("location", payload.Location)
 		record.Set("max_results", payload.MaxResults)
-		record.Set("status", "running")
+		record.Set("status", "pending")
 		record.Set("total_found", 0)
 
 		if err := app.Save(record); err != nil {
 			return e.InternalServerError("Could not create lead list.", err)
 		}
 
-		go runSearchJob(app, record.Id, e.Auth.Id, payload.SearchTerm, payload.Location, payload.MaxResults)
+		manager.enqueue(searchJob{
+			ListId:     record.Id,
+			UserId:     e.Auth.Id,
+			SearchTerm: payload.SearchTerm,
+			Location:   payload.Location,
+			MaxResults: payload.MaxResults,
+		})
 
 		return e.JSON(201, record)
 	}
@@ -132,20 +276,91 @@ func listContacts(app core.App) func(*core.RequestEvent) error {
 	}
 }
 
-func runSearchJob(app core.App, listId, userId, searchTerm, location string, maxResults int) {
+func pauseLeadList(app core.App, manager *searchJobManager) func(*core.RequestEvent) error {
+	return func(e *core.RequestEvent) error {
+		record, err := findOwnedRecord(app, collectionLeadLists, e.Request.PathValue("id"), e.Auth.Id)
+		if err != nil {
+			return e.NotFoundError("Lead list not found.", err)
+		}
+
+		status := record.GetString("status")
+		if status != "pending" && status != "running" {
+			return e.BadRequestError("Only pending or running lists can be paused.", nil)
+		}
+
+		manager.markPaused(record.Id)
+		record.Set("status", "paused")
+		record.Set("error", "")
+		if err := app.Save(record); err != nil {
+			manager.markResumed(record.Id)
+			return e.InternalServerError("Could not pause lead list.", err)
+		}
+
+		return e.JSON(200, record)
+	}
+}
+
+func resumeLeadList(app core.App, manager *searchJobManager) func(*core.RequestEvent) error {
+	return func(e *core.RequestEvent) error {
+		record, err := findOwnedRecord(app, collectionLeadLists, e.Request.PathValue("id"), e.Auth.Id)
+		if err != nil {
+			return e.NotFoundError("Lead list not found.", err)
+		}
+
+		if record.GetString("status") != "paused" {
+			return e.BadRequestError("Only paused lists can be resumed.", nil)
+		}
+
+		record.Set("status", "pending")
+		record.Set("error", "")
+		if err := app.Save(record); err != nil {
+			return e.InternalServerError("Could not resume lead list.", err)
+		}
+
+		manager.markResumed(record.Id)
+		manager.enqueue(searchJobFromRecord(record))
+
+		return e.JSON(200, record)
+	}
+}
+
+func runSearchJob(app core.App, listId, userId, searchTerm, location string, maxResults int, isPaused func() bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 
+	if isPaused != nil && isPaused() {
+		return
+	}
+	if err := updateListStatus(app, listId, "running", ""); err != nil {
+		log.Printf("update running status for %s: %v", listId, err)
+		return
+	}
+	if isPaused != nil && isPaused() {
+		if err := updateListStatus(app, listId, "paused", ""); err != nil {
+			log.Printf("restore paused status for %s: %v", listId, err)
+		}
+		return
+	}
+
 	s := scraper.NewFromEnv()
 	s.SetMaxResults(normalizeMaxResults(maxResults))
-	err := s.Search(ctx, searchTerm, location, func(lead scraper.Lead) error {
-		if err := saveContact(app, listId, userId, lead); err != nil {
+	err := s.SearchWithControl(ctx, searchTerm, location, func() error {
+		return ensureSearchIsActive(app, listId, isPaused)
+	}, func(lead scraper.Lead) error {
+		created, err := saveContact(app, listId, userId, lead)
+		if err != nil {
 			return err
 		}
-		return incrementListTotal(app, listId)
+		if created {
+			return incrementListTotal(app, listId)
+		}
+		return nil
 	})
 
 	if err != nil {
+		if errors.Is(err, errSearchPaused) {
+			return
+		}
 		log.Printf("lead list %s failed: %v", listId, err)
 		if updateErr := updateListStatus(app, listId, "failed", err.Error()); updateErr != nil {
 			log.Printf("update failed status for %s: %v", listId, updateErr)
@@ -156,6 +371,20 @@ func runSearchJob(app core.App, listId, userId, searchTerm, location string, max
 	if err := updateListStatus(app, listId, "completed", ""); err != nil {
 		log.Printf("update completed status for %s: %v", listId, err)
 	}
+}
+
+func ensureSearchIsActive(app core.App, listId string, isPaused func() bool) error {
+	if isPaused != nil && isPaused() {
+		return errSearchPaused
+	}
+	record, err := app.FindRecordById(collectionLeadLists, listId)
+	if err != nil {
+		return err
+	}
+	if record.GetString("status") == "paused" {
+		return errSearchPaused
+	}
+	return nil
 }
 
 func normalizeMaxResults(maxResults int) int {
@@ -171,10 +400,18 @@ func normalizeMaxResults(maxResults int) int {
 	return maxResults
 }
 
-func saveContact(app core.App, listId, userId string, lead scraper.Lead) error {
+func saveContact(app core.App, listId, userId string, lead scraper.Lead) (bool, error) {
 	collection, err := app.FindCollectionByNameOrId(collectionContacts)
 	if err != nil {
-		return err
+		return false, err
+	}
+
+	exists, err := contactExists(app, listId, lead)
+	if err != nil {
+		return false, err
+	}
+	if exists {
+		return false, nil
 	}
 
 	record := core.NewRecord(collection)
@@ -195,7 +432,45 @@ func saveContact(app core.App, listId, userId string, lead scraper.Lead) error {
 	record.Set("longitude", lead.Longitude)
 	record.Set("place_url", lead.PlaceURL)
 
-	return app.Save(record)
+	return true, app.Save(record)
+}
+
+func contactExists(app core.App, listId string, lead scraper.Lead) (bool, error) {
+	if strings.TrimSpace(lead.PlaceURL) != "" {
+		records, err := app.FindRecordsByFilter(
+			collectionContacts,
+			"list={:list} && place_url={:placeURL}",
+			"",
+			1,
+			0,
+			dbx.Params{"list": listId, "placeURL": lead.PlaceURL},
+		)
+		if err != nil {
+			return false, err
+		}
+		if len(records) > 0 {
+			return true, nil
+		}
+	}
+
+	name := strings.TrimSpace(lead.Name)
+	address := strings.TrimSpace(lead.Address)
+	if name == "" || address == "" {
+		return false, nil
+	}
+
+	records, err := app.FindRecordsByFilter(
+		collectionContacts,
+		"list={:list} && name={:name} && address={:address}",
+		"",
+		1,
+		0,
+		dbx.Params{"list": listId, "name": name, "address": address},
+	)
+	if err != nil {
+		return false, err
+	}
+	return len(records) > 0, nil
 }
 
 func incrementListTotal(app core.App, listId string) error {

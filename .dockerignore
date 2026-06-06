@@ -1,0 +1,11 @@
+.git
+.DS_Store
+.env
+.env.*
+pb_data
+frontend
+*.db
+*.db-shm
+*.db-wal
+tmp
+.gocache

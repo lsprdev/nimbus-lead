@@ -20,6 +20,7 @@
   },
   "registries": {
     "@mapcn": "https://mapcn.dev/r/{name}.json",
-    "@kokonutui": "https://kokonutui.com/r/{name}.json"
+    "@kokonutui": "https://kokonutui.com/r/{name}.json",
+    "@dotmatrix": "https://dotmatrix.zzzzshawn.cloud/r/{name}.json"
   }
 }

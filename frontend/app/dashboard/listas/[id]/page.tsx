@@ -10,16 +10,20 @@ import {
   Globe2,
   Loader2,
   MapPin,
+  Pause,
   Phone,
+  Play,
   Search,
   Star,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { DashboardHeader } from '@/components/dashboard/dashboard-header'
+import AITextLoading from '@/components/kokonutui/ai-text-loading'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardTitle } from '@/components/ui/card'
+import { DotmSquare1 } from '@/components/ui/dotm-square-1'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,6 +42,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/auth'
+import { LEAD_LOADING_PHRASES } from '@/lib/loading-phrases'
 import {
   hasCoordinates,
   normalizeContact,
@@ -228,6 +233,7 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
   const [selectedContactId, setSelectedContactId] = React.useState<string | null>(null)
   const [contactQuery, setContactQuery] = React.useState('')
   const [loading, setLoading] = React.useState(true)
+  const [listAction, setListAction] = React.useState<'pause' | 'resume' | null>(null)
   const contactCardRefs = React.useRef(new globalThis.Map<string, HTMLDivElement>())
 
   const normalizedContactQuery = contactQuery.trim().toLowerCase()
@@ -342,6 +348,43 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
     )
   }
 
+  async function handleListAction(action: 'pause' | 'resume') {
+    if (!list) return
+
+    setListAction(action)
+    try {
+      const response = await authFetch(`/api/lead-lists/${list.id}/${action}`, {
+        method: 'POST',
+      })
+      const payload = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.message ??
+            (action === 'pause'
+              ? 'Não foi possível pausar a busca.'
+              : 'Não foi possível continuar a busca.'),
+        )
+      }
+
+      setList(normalizeList(payload))
+      toast.success(action === 'pause' ? 'Busca pausada.' : 'Busca retomada.')
+      if (action === 'resume') {
+        void loadList()
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : action === 'pause'
+            ? 'Erro ao pausar busca.'
+            : 'Erro ao continuar busca.',
+      )
+    } finally {
+      setListAction(null)
+    }
+  }
+
   return (
     <>
       <DashboardHeader title={list?.name ?? 'Lista'} />
@@ -377,6 +420,38 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
                   {contacts.length} contatos encontrados
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  {list.status === 'pending' || list.status === 'running' ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={listAction !== null}
+                      onClick={() => handleListAction('pause')}
+                    >
+                      {listAction === 'pause' ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Pause className="size-4" />
+                      )}
+                      Pausar
+                    </Button>
+                  ) : null}
+                  {list.status === 'paused' ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={listAction !== null}
+                      onClick={() => handleListAction('resume')}
+                    >
+                      {listAction === 'resume' ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Play className="size-4" />
+                      )}
+                      Continuar
+                    </Button>
+                  ) : null}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button type="button" variant="outline" size="sm">
@@ -452,13 +527,22 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
                         </div>
                       )
                     ) : (
-                      <div className="flex h-[420px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed text-center">
-                        <Search className="size-8 text-muted-foreground" />
+                      <div className="flex h-[420px] flex-col items-center justify-center gap-4 rounded-lg border border-dashed text-center">
+                        <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                          <DotmSquare1
+                            size={32}
+                            dotSize={4}
+                            speed={1.2}
+                            bloom
+                            ariaLabel="Buscando contatos"
+                          />
+                        </div>
                         <div>
-                          <p className="text-sm font-medium">Aguardando contatos</p>
-                          <p className="text-xs text-muted-foreground">
-                            Eles aparecem aqui conforme o scraper salva os resultados.
-                          </p>
+                          <AITextLoading
+                            texts={LEAD_LOADING_PHRASES}
+                            interval={1800}
+                            className="text-center text-base leading-snug from-foreground via-muted-foreground to-foreground sm:text-lg"
+                          />
                         </div>
                       </div>
                     )}

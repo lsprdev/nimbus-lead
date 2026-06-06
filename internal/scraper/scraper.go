@@ -73,12 +73,19 @@ func (s *Scraper) SetMaxResults(maxResults int) {
 }
 
 func (s *Scraper) Search(ctx context.Context, searchTerm, location string, onLead func(Lead) error) error {
+	return s.SearchWithControl(ctx, searchTerm, location, nil, onLead)
+}
+
+func (s *Scraper) SearchWithControl(ctx context.Context, searchTerm, location string, shouldContinue func() error, onLead func(Lead) error) error {
 	query := strings.TrimSpace(searchTerm)
 	if location != "" {
 		query = fmt.Sprintf("%s %s", query, strings.TrimSpace(location))
 	}
 	if query == "" {
 		return fmt.Errorf("search term is required")
+	}
+	if err := checkControl(ctx, shouldContinue); err != nil {
+		return err
 	}
 
 	pw, err := playwright.Run()
@@ -122,11 +129,11 @@ func (s *Scraper) Search(ctx context.Context, searchTerm, location string, onLea
 		return err
 	}
 
-	s.scrollResults(ctx, page)
-	return s.extractResults(ctx, page, onLead)
+	s.scrollResults(ctx, page, shouldContinue)
+	return s.extractResults(ctx, page, shouldContinue, onLead)
 }
 
-func (s *Scraper) scrollResults(ctx context.Context, page playwright.Page) {
+func (s *Scraper) scrollResults(ctx context.Context, page playwright.Page, shouldContinue func() error) {
 	feedSelector := `div[role="feed"]`
 	if _, err := page.WaitForSelector(feedSelector, playwright.PageWaitForSelectorOptions{Timeout: playwright.Float(5000)}); err != nil {
 		log.Printf("results feed not found: %v", err)
@@ -142,7 +149,7 @@ func (s *Scraper) scrollResults(ctx context.Context, page playwright.Page) {
 	}
 
 	for i := 0; i < scrolls; i++ {
-		if ctx.Err() != nil {
+		if err := checkControl(ctx, shouldContinue); err != nil {
 			return
 		}
 		_, err := page.Evaluate(`(selector) => {
@@ -159,8 +166,11 @@ func (s *Scraper) scrollResults(ctx context.Context, page playwright.Page) {
 	}
 }
 
-func (s *Scraper) extractResults(ctx context.Context, page playwright.Page, onLead func(Lead) error) error {
+func (s *Scraper) extractResults(ctx context.Context, page playwright.Page, shouldContinue func() error, onLead func(Lead) error) error {
 	if err := sleep(ctx, 3*time.Second); err != nil {
+		return err
+	}
+	if err := checkControl(ctx, shouldContinue); err != nil {
 		return err
 	}
 
@@ -179,7 +189,7 @@ func (s *Scraper) extractResults(ctx context.Context, page playwright.Page, onLe
 	}
 
 	for i := 0; i < total; i++ {
-		if err := ctx.Err(); err != nil {
+		if err := checkControl(ctx, shouldContinue); err != nil {
 			return err
 		}
 
@@ -190,6 +200,9 @@ func (s *Scraper) extractResults(ctx context.Context, page playwright.Page, onLe
 		}
 
 		if err := sleep(ctx, 3*time.Second); err != nil {
+			return err
+		}
+		if err := checkControl(ctx, shouldContinue); err != nil {
 			return err
 		}
 
@@ -332,4 +345,14 @@ func sleep(ctx context.Context, duration time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+func checkControl(ctx context.Context, shouldContinue func() error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if shouldContinue == nil {
+		return nil
+	}
+	return shouldContinue()
 }

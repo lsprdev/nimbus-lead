@@ -1,4 +1,4 @@
-export type LeadListStatus = 'pending' | 'running' | 'completed' | 'failed'
+export type LeadListStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed'
 
 export type LeadList = {
   id: string
@@ -78,6 +78,7 @@ export function statusLabel(status: LeadListStatus) {
   const labels: Record<LeadListStatus, string> = {
     pending: 'Pendente',
     running: 'Buscando',
+    paused: 'Pausada',
     completed: 'Concluída',
     failed: 'Falhou',
   }

@@ -1,0 +1,71 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        BASE_URL: ${BASE_URL:-https://kartapro.lsx.li}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_BASE_URL: ${BASE_URL:-https://kartapro.lsx.li}
+    depends_on:
+      - backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-dokploy-network}"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-frontend.rule=Host(`${APP_DOMAIN:-kartapro.lsx.li}`)"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-frontend.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-frontend.tls=true"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-frontend.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-letsencrypt}"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-frontend.priority=1"
+      - "traefik.http.services.${TRAEFIK_ROUTER_PREFIX:-kartapro}-frontend.loadbalancer.server.port=3000"
+    networks:
+      - traefik
+      - internal
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      BASE_URL: ${BASE_URL:-https://kartapro.lsx.li}
+      HEADLESS: ${HEADLESS:-true}
+      TIMEOUT: ${TIMEOUT:-30000}
+      MAX_RESULTS: ${MAX_RESULTS:-60}
+      SCRAPER_CONCURRENCY: ${SCRAPER_CONCURRENCY:-2}
+      PLAYWRIGHT_DRIVER_PATH: /ms-playwright-go
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    volumes:
+      - backend_data:/app/pb_data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-dokploy-network}"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend-api.rule=Host(`${APP_DOMAIN:-kartapro.lsx.li}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend-api.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend-api.tls=true"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend-api.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-letsencrypt}"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend-api.priority=100"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend-api.service=${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend-admin.rule=Host(`${APP_DOMAIN:-kartapro.lsx.li}`) && PathPrefix(`/_`)"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend-admin.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend-admin.tls=true"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend-admin.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-letsencrypt}"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend-admin.priority=100"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend-admin.service=${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend"
+      - "traefik.http.services.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend.loadbalancer.server.port=8090"
+    networks:
+      - traefik
+      - internal
+
+volumes:
+  backend_data:
+
+networks:
+  internal:
+    driver: bridge
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:-dokploy-network}

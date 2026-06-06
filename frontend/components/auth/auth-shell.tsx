@@ -5,13 +5,7 @@ import { BrandWordmark } from "@/components/brand";
 import AITextLoading from "@/components/kokonutui/ai-text-loading";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Component as EtherealShadow } from "@/components/ui/etheral-shadow";
-
-const LEAD_LOADING_PHRASES = [
-  "Encontrando contatos em São Paulo, SP...",
-  "Filtrando empresas por segmento...",
-  "Validando telefones e endereços...",
-  "Montando lista de prospecção...",
-];
+import { LEAD_LOADING_PHRASES } from "@/lib/loading-phrases";
 
 export function AuthShell({
   title,
