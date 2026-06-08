@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -67,6 +68,7 @@ func Register(app core.App) {
 		e.Router.GET("/api/lead-lists/{id}/contacts", listContacts(app)).Bind(apis.RequireAuth("users"))
 		e.Router.POST("/api/lead-lists/{id}/pause", pauseLeadList(app, manager)).Bind(apis.RequireAuth("users"))
 		e.Router.POST("/api/lead-lists/{id}/resume", resumeLeadList(app, manager)).Bind(apis.RequireAuth("users"))
+		e.Router.DELETE("/api/lead-lists/{id}", deleteLeadList(app, manager)).Bind(apis.RequireAuth("users"))
 
 		manager.start()
 		manager.enqueueRecoverableJobs()
@@ -327,6 +329,24 @@ func resumeLeadList(app core.App, manager *searchJobManager) func(*core.RequestE
 		manager.enqueue(searchJobFromRecord(record))
 
 		return e.JSON(200, record)
+	}
+}
+
+func deleteLeadList(app core.App, manager *searchJobManager) func(*core.RequestEvent) error {
+	return func(e *core.RequestEvent) error {
+		record, err := findOwnedRecord(app, collectionLeadLists, e.Request.PathValue("id"), e.Auth.Id)
+		if err != nil {
+			return e.NotFoundError("Lead list not found.", err)
+		}
+
+		manager.markPaused(record.Id)
+		manager.queued.Delete(record.Id)
+		if err := app.Delete(record); err != nil {
+			manager.markResumed(record.Id)
+			return e.InternalServerError("Could not delete lead list.", err)
+		}
+
+		return e.NoContent(http.StatusNoContent)
 	}
 }
 

@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import maplibregl from 'maplibre-gl'
+import { useRouter } from 'next/navigation'
 import {
   ChevronDown,
   Download,
@@ -15,11 +16,23 @@ import {
   Play,
   Search,
   Star,
+  Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { DashboardHeader } from '@/components/dashboard/dashboard-header'
 import AITextLoading from '@/components/kokonutui/ai-text-loading'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardTitle } from '@/components/ui/card'
@@ -226,6 +239,7 @@ function escapePdfText(value: string) {
 }
 
 export default function LeadListPage({ params }: { params: Promise<{ id: string }> }) {
+  const router = useRouter()
   const { id } = React.use(params)
   const { authFetch } = useAuth()
   const [list, setList] = React.useState<LeadList | null>(null)
@@ -234,6 +248,7 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
   const [contactQuery, setContactQuery] = React.useState('')
   const [loading, setLoading] = React.useState(true)
   const [listAction, setListAction] = React.useState<'pause' | 'resume' | null>(null)
+  const [deletingList, setDeletingList] = React.useState(false)
   const contactCardRefs = React.useRef(new globalThis.Map<string, HTMLDivElement>())
 
   const normalizedContactQuery = contactQuery.trim().toLowerCase()
@@ -385,6 +400,28 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
     }
   }
 
+  async function handleDeleteList() {
+    if (!list) return
+
+    setDeletingList(true)
+    try {
+      const response = await authFetch(`/api/lead-lists/${list.id}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        throw new Error(payload?.message ?? 'Não foi possível excluir a busca.')
+      }
+
+      toast.success('Busca excluída.')
+      router.push('/dashboard/buscar')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao excluir busca.')
+      setDeletingList(false)
+    }
+  }
+
   return (
     <>
       <DashboardHeader title={list?.name ?? 'Lista'} />
@@ -420,12 +457,57 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
                   {contacts.length} contatos encontrados
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        disabled={deletingList}
+                      >
+                        {deletingList ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="size-4" />
+                        )}
+                        Excluir
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Excluir esta busca?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Esta ação remove a lista e todos os contatos encontrados nela. Se a busca ainda estiver em andamento, ela será interrompida.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel disabled={deletingList}>
+                          Cancelar
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                          disabled={deletingList}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          onClick={(event) => {
+                            event.preventDefault()
+                            void handleDeleteList()
+                          }}
+                        >
+                          {deletingList ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="size-4" />
+                          )}
+                          Excluir busca
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                   {list.status === 'pending' || list.status === 'running' ? (
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      disabled={listAction !== null}
+                      disabled={listAction !== null || deletingList}
                       onClick={() => handleListAction('pause')}
                     >
                       {listAction === 'pause' ? (
@@ -441,7 +523,7 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
                       type="button"
                       variant="outline"
                       size="sm"
-                      disabled={listAction !== null}
+                      disabled={listAction !== null || deletingList}
                       onClick={() => handleListAction('resume')}
                     >
                       {listAction === 'resume' ? (
@@ -454,7 +536,7 @@ export default function LeadListPage({ params }: { params: Promise<{ id: string 
                   ) : null}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button type="button" variant="outline" size="sm">
+                      <Button type="button" variant="outline" size="sm" disabled={deletingList}>
                         <Download className="size-4" />
                         Exportar
                         <ChevronDown className="size-4" />
