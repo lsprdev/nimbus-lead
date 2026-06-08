@@ -49,7 +49,7 @@ services:
       - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend-api.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-letsencrypt}"
       - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend-api.priority=100"
       - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend-api.service=${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend"
-      - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend-admin.rule=Host(`${APP_DOMAIN:-kartapro.lsx.li}`) && PathPrefix(`/_`)"
+      - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend-admin.rule=Host(`${APP_DOMAIN:-kartapro.lsx.li}`) && (Path(`/_`) || PathPrefix(`/_/`))"
       - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend-admin.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
       - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend-admin.tls=true"
       - "traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-kartapro}-backend-admin.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-letsencrypt}"
