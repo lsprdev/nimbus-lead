@@ -98,6 +98,11 @@ func (s *Scraper) SearchWithControl(ctx context.Context, searchTerm, location st
 		Headless: playwright.Bool(s.config.Headless),
 		Args: []string{
 			"--disable-blink-features=AutomationControlled",
+			"--disable-dev-shm-usage",
+			"--disable-extensions",
+			"--disable-gpu",
+			"--disable-sync",
+			"--mute-audio",
 			"--no-sandbox",
 		},
 	})
@@ -106,26 +111,32 @@ func (s *Scraper) SearchWithControl(ctx context.Context, searchTerm, location st
 	}
 	defer browser.Close()
 
-	context, err := browser.NewContext(playwright.BrowserNewContextOptions{
-		Viewport:  &playwright.Size{Width: 1920, Height: 1080},
+	browserContext, err := browser.NewContext(playwright.BrowserNewContextOptions{
+		Viewport:  &playwright.Size{Width: 1280, Height: 900},
 		UserAgent: playwright.String("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"),
 		Locale:    playwright.String("pt-BR"),
 	})
 	if err != nil {
 		return err
 	}
+	if err := blockHeavyResources(browserContext); err != nil {
+		return err
+	}
 
-	page, err := context.NewPage()
+	page, err := browserContext.NewPage()
 	if err != nil {
 		return err
 	}
 
 	searchURL := fmt.Sprintf("https://www.google.com/maps/search/%s", url.QueryEscape(query))
-	if _, err := page.Goto(searchURL, playwright.PageGotoOptions{Timeout: playwright.Float(s.config.Timeout)}); err != nil {
+	if _, err := page.Goto(searchURL, playwright.PageGotoOptions{
+		Timeout:   playwright.Float(s.config.Timeout),
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+	}); err != nil {
 		return fmt.Errorf("open maps search: %w", err)
 	}
 
-	if err := sleep(ctx, 5*time.Second); err != nil {
+	if err := sleep(ctx, 2*time.Second); err != nil {
 		return err
 	}
 
@@ -148,10 +159,16 @@ func (s *Scraper) scrollResults(ctx context.Context, page playwright.Page, shoul
 		scrolls = 60
 	}
 
+	stagnantScrolls := 0
 	for i := 0; i < scrolls; i++ {
 		if err := checkControl(ctx, shouldContinue); err != nil {
 			return
 		}
+		linkCountBefore, _ := page.Locator(`div[role="feed"] a[href*="/maps/place/"]`).Count()
+		if linkCountBefore >= s.config.MaxResults {
+			return
+		}
+
 		_, err := page.Evaluate(`(selector) => {
 			const feed = document.querySelector(selector);
 			if (feed) feed.scrollTop = feed.scrollHeight;
@@ -160,14 +177,26 @@ func (s *Scraper) scrollResults(ctx context.Context, page playwright.Page, shoul
 			log.Printf("scroll results error: %v", err)
 			return
 		}
-		if err := sleep(ctx, 2*time.Second); err != nil {
+		if err := sleep(ctx, 1*time.Second); err != nil {
 			return
 		}
+		linkCountAfter, _ := page.Locator(`div[role="feed"] a[href*="/maps/place/"]`).Count()
+		if linkCountAfter >= s.config.MaxResults {
+			return
+		}
+		if linkCountAfter == linkCountBefore {
+			stagnantScrolls++
+			if stagnantScrolls >= 2 {
+				return
+			}
+			continue
+		}
+		stagnantScrolls = 0
 	}
 }
 
 func (s *Scraper) extractResults(ctx context.Context, page playwright.Page, shouldContinue func() error, onLead func(Lead) error) error {
-	if err := sleep(ctx, 3*time.Second); err != nil {
+	if err := sleep(ctx, 1*time.Second); err != nil {
 		return err
 	}
 	if err := checkControl(ctx, shouldContinue); err != nil {
@@ -199,7 +228,10 @@ func (s *Scraper) extractResults(ctx context.Context, page playwright.Page, shou
 			continue
 		}
 
-		if err := sleep(ctx, 3*time.Second); err != nil {
+		if _, err := page.WaitForSelector(`h1.DUwDvf`, playwright.PageWaitForSelectorOptions{Timeout: playwright.Float(3000)}); err != nil {
+			log.Printf("wait result %d details error: %v", i+1, err)
+		}
+		if err := sleep(ctx, 500*time.Millisecond); err != nil {
 			return err
 		}
 		if err := checkControl(ctx, shouldContinue); err != nil {
@@ -216,6 +248,22 @@ func (s *Scraper) extractResults(ctx context.Context, page playwright.Page, shou
 	}
 
 	return nil
+}
+
+func blockHeavyResources(context playwright.BrowserContext) error {
+	return context.Route("**/*", func(route playwright.Route) {
+		resourceType := route.Request().ResourceType()
+		switch resourceType {
+		case "font", "image", "media":
+			if err := route.Abort(); err != nil {
+				log.Printf("abort %s resource error: %v", resourceType, err)
+			}
+		default:
+			if err := route.Continue(); err != nil {
+				log.Printf("continue %s resource error: %v", resourceType, err)
+			}
+		}
+	})
 }
 
 func extractLeadData(page playwright.Page) Lead {

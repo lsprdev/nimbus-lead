@@ -20,6 +20,12 @@ import (
 const (
 	collectionLeadLists = "lead_lists"
 	collectionContacts  = "contacts"
+	statusPending       = "pending"
+	statusRunning       = "running"
+	statusPaused        = "paused"
+	statusCompleted     = "completed"
+	statusPartial       = "partial"
+	statusFailed        = "failed"
 	defaultMaxResults   = 30
 	minMaxResults       = 1
 	maxMaxResults       = 500
@@ -95,7 +101,7 @@ func (m *searchJobManager) worker(workerId int) {
 			log.Printf("worker %d skipped missing lead list %s: %v", workerId, job.ListId, err)
 			continue
 		}
-		if record.GetString("status") == "paused" || m.isPaused(job.ListId) {
+		if record.GetString("status") == statusPaused || m.isPaused(job.ListId) {
 			continue
 		}
 
@@ -170,7 +176,7 @@ func searchJobFromRecord(record *core.Record) searchJob {
 func scraperConcurrency() int {
 	value, _ := strconv.Atoi(os.Getenv("SCRAPER_CONCURRENCY"))
 	if value <= 0 {
-		return 2
+		return 1
 	}
 	if value > 10 {
 		return 10
@@ -205,7 +211,7 @@ func createLeadList(app core.App, manager *searchJobManager) func(*core.RequestE
 		record.Set("search_term", payload.SearchTerm)
 		record.Set("location", payload.Location)
 		record.Set("max_results", payload.MaxResults)
-		record.Set("status", "pending")
+		record.Set("status", statusPending)
 		record.Set("total_found", 0)
 
 		if err := app.Save(record); err != nil {
@@ -284,12 +290,12 @@ func pauseLeadList(app core.App, manager *searchJobManager) func(*core.RequestEv
 		}
 
 		status := record.GetString("status")
-		if status != "pending" && status != "running" {
+		if status != statusPending && status != statusRunning {
 			return e.BadRequestError("Only pending or running lists can be paused.", nil)
 		}
 
 		manager.markPaused(record.Id)
-		record.Set("status", "paused")
+		record.Set("status", statusPaused)
 		record.Set("error", "")
 		if err := app.Save(record); err != nil {
 			manager.markResumed(record.Id)
@@ -307,11 +313,11 @@ func resumeLeadList(app core.App, manager *searchJobManager) func(*core.RequestE
 			return e.NotFoundError("Lead list not found.", err)
 		}
 
-		if record.GetString("status") != "paused" {
+		if record.GetString("status") != statusPaused {
 			return e.BadRequestError("Only paused lists can be resumed.", nil)
 		}
 
-		record.Set("status", "pending")
+		record.Set("status", statusPending)
 		record.Set("error", "")
 		if err := app.Save(record); err != nil {
 			return e.InternalServerError("Could not resume lead list.", err)
@@ -331,12 +337,12 @@ func runSearchJob(app core.App, listId, userId, searchTerm, location string, max
 	if isPaused != nil && isPaused() {
 		return
 	}
-	if err := updateListStatus(app, listId, "running", ""); err != nil {
+	if err := updateListStatus(app, listId, statusRunning, ""); err != nil {
 		log.Printf("update running status for %s: %v", listId, err)
 		return
 	}
 	if isPaused != nil && isPaused() {
-		if err := updateListStatus(app, listId, "paused", ""); err != nil {
+		if err := updateListStatus(app, listId, statusPaused, ""); err != nil {
 			log.Printf("restore paused status for %s: %v", listId, err)
 		}
 		return
@@ -344,6 +350,7 @@ func runSearchJob(app core.App, listId, userId, searchTerm, location string, max
 
 	s := scraper.NewFromEnv()
 	s.SetMaxResults(normalizeMaxResults(maxResults))
+	totalSaved := 0
 	err := s.SearchWithControl(ctx, searchTerm, location, func() error {
 		return ensureSearchIsActive(app, listId, isPaused)
 	}, func(lead scraper.Lead) error {
@@ -352,6 +359,7 @@ func runSearchJob(app core.App, listId, userId, searchTerm, location string, max
 			return err
 		}
 		if created {
+			totalSaved++
 			return incrementListTotal(app, listId)
 		}
 		return nil
@@ -362,14 +370,20 @@ func runSearchJob(app core.App, listId, userId, searchTerm, location string, max
 			return
 		}
 		log.Printf("lead list %s failed: %v", listId, err)
-		if updateErr := updateListStatus(app, listId, "failed", err.Error()); updateErr != nil {
+		if updateErr := updateListStatus(app, listId, statusFailed, err.Error()); updateErr != nil {
 			log.Printf("update failed status for %s: %v", listId, updateErr)
 		}
 		return
 	}
 
-	if err := updateListStatus(app, listId, "completed", ""); err != nil {
-		log.Printf("update completed status for %s: %v", listId, err)
+	totalFound, totalErr := listTotalFound(app, listId)
+	if totalErr != nil {
+		log.Printf("read final total for %s: %v", listId, totalErr)
+		totalFound = totalSaved
+	}
+	status, message := completionStatus(totalFound, normalizeMaxResults(maxResults))
+	if err := updateListStatus(app, listId, status, message); err != nil {
+		log.Printf("update %s status for %s: %v", status, listId, err)
 	}
 }
 
@@ -381,10 +395,18 @@ func ensureSearchIsActive(app core.App, listId string, isPaused func() bool) err
 	if err != nil {
 		return err
 	}
-	if record.GetString("status") == "paused" {
+	if record.GetString("status") == statusPaused {
 		return errSearchPaused
 	}
 	return nil
+}
+
+func completionStatus(totalFound, requestedTotal int) (string, string) {
+	if totalFound >= requestedTotal {
+		return statusCompleted, ""
+	}
+
+	return statusPartial, "Busca encerrada com " + strconv.Itoa(totalFound) + " de " + strconv.Itoa(requestedTotal) + " contatos solicitados."
 }
 
 func normalizeMaxResults(maxResults int) int {
@@ -480,6 +502,14 @@ func incrementListTotal(app core.App, listId string) error {
 	}
 	record.Set("total_found+", 1)
 	return app.Save(record)
+}
+
+func listTotalFound(app core.App, listId string) (int, error) {
+	record, err := app.FindRecordById(collectionLeadLists, listId)
+	if err != nil {
+		return 0, err
+	}
+	return record.GetInt("total_found"), nil
 }
 
 func updateListStatus(app core.App, listId, status, message string) error {
