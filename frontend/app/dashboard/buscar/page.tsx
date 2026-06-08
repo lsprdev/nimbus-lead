@@ -109,17 +109,24 @@ export default function SearchPage() {
   const [cityOptions, setCityOptions] = React.useState<ComboboxOption[]>([]);
   const [loadingCities, setLoadingCities] = React.useState(false);
   const [citiesLoaded, setCitiesLoaded] = React.useState(false);
+  const hasActiveLists = React.useMemo(
+    () =>
+      lists.some((list) => list.status === "pending" || list.status === "running"),
+    [lists],
+  );
   const totalLists = lists.length;
   const completedLists = lists.filter(
-    (list) => list.status === "completed",
+    (list) => list.status === "completed" || list.status === "partial",
   ).length;
   const totalContacts = lists.reduce(
     (total, list) => total + list.total_found,
     0,
   );
 
-  const loadLists = React.useCallback(async () => {
-    setLoadingLists(true);
+  const loadLists = React.useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setLoadingLists(true);
+    }
     try {
       const response = await authFetch("/api/lead-lists");
       const payload = await response.json().catch(() => []);
@@ -130,17 +137,31 @@ export default function SearchPage() {
 
       setLists(Array.isArray(payload) ? payload.map(normalizeList) : []);
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Erro ao carregar listas.",
-      );
+      if (!options?.silent) {
+        toast.error(
+          error instanceof Error ? error.message : "Erro ao carregar listas.",
+        );
+      }
     } finally {
-      setLoadingLists(false);
+      if (!options?.silent) {
+        setLoadingLists(false);
+      }
     }
   }, [authFetch]);
 
   React.useEffect(() => {
     void loadLists();
   }, [loadLists]);
+
+  React.useEffect(() => {
+    if (!hasActiveLists) return;
+
+    const interval = window.setInterval(() => {
+      void loadLists({ silent: true });
+    }, 3000);
+
+    return () => window.clearInterval(interval);
+  }, [hasActiveLists, loadLists]);
 
   const loadCities = React.useCallback(async () => {
     if (citiesLoaded || loadingCities) return;
@@ -491,7 +512,7 @@ function LeadListCard({ list }: { list: LeadList }) {
   const progress = list.max_results
     ? Math.min(Math.round((list.total_found / list.max_results) * 100), 100)
     : 0;
-  const isCompleted = list.status === "completed";
+  const isCompleted = list.status === "completed" || list.status === "partial";
   const contactsLabel = reachedSavedLimit
     ? `${list.total_found.toLocaleString("pt-BR")} / ${list.max_results.toLocaleString("pt-BR")}`
     : list.total_found.toLocaleString("pt-BR");

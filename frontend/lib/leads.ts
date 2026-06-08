@@ -1,4 +1,4 @@
-export type LeadListStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed'
+export type LeadListStatus = 'pending' | 'running' | 'paused' | 'completed' | 'partial' | 'failed'
 
 export type LeadList = {
   id: string
@@ -80,6 +80,7 @@ export function statusLabel(status: LeadListStatus) {
     running: 'Buscando',
     paused: 'Pausada',
     completed: 'Concluída',
+    partial: 'Parcial',
     failed: 'Falhou',
   }
 
