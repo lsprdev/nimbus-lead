@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
@@ -32,9 +33,10 @@ type Lead struct {
 }
 
 type Config struct {
-	Headless   bool
-	Timeout    float64
-	MaxResults int
+	Headless          bool
+	Timeout           float64
+	MaxResults        int
+	DetailConcurrency int
 }
 
 type Scraper struct {
@@ -57,11 +59,14 @@ func NewFromEnv() *Scraper {
 		maxResults = 60
 	}
 
+	detailConcurrency, _ := strconv.Atoi(os.Getenv("SCRAPER_DETAIL_CONCURRENCY"))
+
 	return &Scraper{
 		config: Config{
-			Headless:   headless,
-			Timeout:    timeout,
-			MaxResults: maxResults,
+			Headless:          headless,
+			Timeout:           timeout,
+			MaxResults:        maxResults,
+			DetailConcurrency: normalizeDetailConcurrency(detailConcurrency),
 		},
 	}
 }
@@ -140,62 +145,166 @@ func (s *Scraper) SearchWithControl(ctx context.Context, searchTerm, location st
 		return err
 	}
 
-	s.scrollResults(ctx, page, shouldContinue)
-	return s.extractResults(ctx, page, shouldContinue, onLead)
+	resultURLs := s.collectResultURLs(ctx, page, shouldContinue)
+	if err := page.Close(); err != nil {
+		log.Printf("close search page error: %v", err)
+	}
+	return s.extractResults(ctx, browserContext, resultURLs, shouldContinue, onLead)
 }
 
-func (s *Scraper) scrollResults(ctx context.Context, page playwright.Page, shouldContinue func() error) {
+func (s *Scraper) collectResultURLs(ctx context.Context, page playwright.Page, shouldContinue func() error) []string {
 	feedSelector := `div[role="feed"]`
-	if _, err := page.WaitForSelector(feedSelector, playwright.PageWaitForSelectorOptions{Timeout: playwright.Float(5000)}); err != nil {
+	if _, err := page.WaitForSelector(feedSelector, playwright.PageWaitForSelectorOptions{Timeout: playwright.Float(15000)}); err != nil {
 		log.Printf("results feed not found: %v", err)
-		return
+		return nil
 	}
 
-	scrolls := 15
-	if s.config.MaxResults > 100 {
-		scrolls = 30
-	}
-	if s.config.MaxResults > 250 {
-		scrolls = 60
+	candidateLimit := s.candidateLimit()
+	resultURLs := make([]string, 0, candidateLimit)
+	seen := make(map[string]struct{}, candidateLimit)
+
+	maxScrolls := 25 + candidateLimit/2
+	if maxScrolls > 160 {
+		maxScrolls = 160
 	}
 
 	stagnantScrolls := 0
-	for i := 0; i < scrolls; i++ {
+	for i := 0; i < maxScrolls; i++ {
 		if err := checkControl(ctx, shouldContinue); err != nil {
-			return
+			return resultURLs
 		}
-		linkCountBefore, _ := page.Locator(`div[role="feed"] a[href*="/maps/place/"]`).Count()
-		if linkCountBefore >= s.config.MaxResults {
-			return
+
+		before := len(resultURLs)
+		resultURLs = appendResultURLs(page, resultURLs, seen, candidateLimit)
+		if len(resultURLs) >= candidateLimit {
+			return resultURLs
+		}
+
+		if mapsFeedReachedEnd(page) && len(resultURLs) == before {
+			return resultURLs
+		}
+
+		_ = page.Locator(feedSelector).Hover()
+		if err := page.Mouse().Wheel(0, 1200); err != nil {
+			log.Printf("wheel results error: %v", err)
 		}
 
 		_, err := page.Evaluate(`(selector) => {
 			const feed = document.querySelector(selector);
-			if (feed) feed.scrollTop = feed.scrollHeight;
+			if (feed) feed.scrollBy(0, Math.max(feed.clientHeight * 0.9, 700));
 		}`, feedSelector)
 		if err != nil {
 			log.Printf("scroll results error: %v", err)
-			return
+			return resultURLs
 		}
-		if err := sleep(ctx, 1*time.Second); err != nil {
-			return
+		if err := sleep(ctx, 1500*time.Millisecond); err != nil {
+			return resultURLs
 		}
-		linkCountAfter, _ := page.Locator(`div[role="feed"] a[href*="/maps/place/"]`).Count()
-		if linkCountAfter >= s.config.MaxResults {
-			return
+
+		resultURLs = appendResultURLs(page, resultURLs, seen, candidateLimit)
+		if len(resultURLs) >= candidateLimit {
+			return resultURLs
 		}
-		if linkCountAfter == linkCountBefore {
+		if len(resultURLs) == before {
 			stagnantScrolls++
-			if stagnantScrolls >= 2 {
-				return
+			if stagnantScrolls >= 8 {
+				return resultURLs
 			}
 			continue
 		}
 		stagnantScrolls = 0
 	}
+
+	return resultURLs
 }
 
-func (s *Scraper) extractResults(ctx context.Context, page playwright.Page, shouldContinue func() error, onLead func(Lead) error) error {
+func (s *Scraper) candidateLimit() int {
+	buffer := s.config.MaxResults / 2
+	if buffer < 10 {
+		buffer = 10
+	}
+	if buffer > 50 {
+		buffer = 50
+	}
+	return s.config.MaxResults + buffer
+}
+
+func appendResultURLs(page playwright.Page, resultURLs []string, seen map[string]struct{}, maxURLs int) []string {
+	links, err := page.Locator(`div[role="feed"] a[href*="/maps/place/"]`).All()
+	if err != nil {
+		log.Printf("collect result links error: %v", err)
+		return resultURLs
+	}
+
+	for _, link := range links {
+		href, err := link.GetAttribute("href")
+		if err != nil || href == "" {
+			continue
+		}
+		href = normalizeResultURL(href)
+		if href == "" {
+			continue
+		}
+		if _, ok := seen[href]; ok {
+			continue
+		}
+		seen[href] = struct{}{}
+		resultURLs = append(resultURLs, href)
+		if len(resultURLs) >= maxURLs {
+			return resultURLs
+		}
+	}
+
+	return resultURLs
+}
+
+func normalizeResultURL(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return ""
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String()
+}
+
+func mapsFeedReachedEnd(page playwright.Page) bool {
+	text, err := page.Locator(`div[role="feed"]`).TextContent()
+	if err != nil {
+		return false
+	}
+	text = strings.ToLower(text)
+
+	endMessages := []string{
+		"you've reached the end of the list",
+		"you have reached the end of the list",
+		"você chegou ao final da lista",
+		"voce chegou ao final da lista",
+	}
+	for _, message := range endMessages {
+		if strings.Contains(text, message) {
+			return true
+		}
+	}
+
+	return false
+}
+
+type detailJob struct {
+	index int
+	url   string
+}
+
+type detailResult struct {
+	lead Lead
+	err  error
+}
+
+func (s *Scraper) extractResults(ctx context.Context, browserContext playwright.BrowserContext, resultURLs []string, shouldContinue func() error, onLead func(Lead) error) error {
 	if err := sleep(ctx, 1*time.Second); err != nil {
 		return err
 	}
@@ -203,51 +312,151 @@ func (s *Scraper) extractResults(ctx context.Context, page playwright.Page, shou
 		return err
 	}
 
-	linksLocator := page.Locator(`div[role="feed"] a[href*="/maps/place/"]`)
-	count, err := linksLocator.Count()
-	if err != nil {
-		return fmt.Errorf("count result links: %w", err)
-	}
-	if count == 0 {
+	if len(resultURLs) == 0 {
 		return nil
 	}
 
-	total := count
-	if s.config.MaxResults < count {
-		total = s.config.MaxResults
+	extractCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	workerCount := s.detailConcurrency(len(resultURLs))
+	jobs := make(chan detailJob, workerCount)
+	results := make(chan detailResult, workerCount)
+
+	var wg sync.WaitGroup
+	for workerID := 1; workerID <= workerCount; workerID++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+
+			page, err := browserContext.NewPage()
+			if err != nil {
+				sendDetailResult(extractCtx, results, detailResult{err: fmt.Errorf("create detail page: %w", err)})
+				return
+			}
+			defer func() {
+				if err := page.Close(); err != nil {
+					log.Printf("close detail page %d error: %v", workerID, err)
+				}
+			}()
+
+			for job := range jobs {
+				lead, err := s.extractLeadFromURL(extractCtx, page, job.url, job.index, shouldContinue)
+				if err != nil {
+					sendDetailResult(extractCtx, results, detailResult{err: err})
+					return
+				}
+				if lead.Name == "" {
+					continue
+				}
+				if !sendDetailResult(extractCtx, results, detailResult{lead: lead}) {
+					return
+				}
+			}
+		}(workerID)
 	}
 
-	for i := 0; i < total; i++ {
-		if err := checkControl(ctx, shouldContinue); err != nil {
-			return err
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer close(jobs)
+		for i, resultURL := range resultURLs {
+			if err := checkControl(extractCtx, shouldContinue); err != nil {
+				sendDetailResult(extractCtx, results, detailResult{err: err})
+				cancel()
+				return
+			}
+			select {
+			case jobs <- detailJob{index: i, url: resultURL}:
+			case <-extractCtx.Done():
+				return
+			}
 		}
+	}()
 
-		link := page.Locator(`div[role="feed"] a[href*="/maps/place/"]`).Nth(i)
-		if err := link.Click(playwright.LocatorClickOptions{Force: playwright.Bool(true)}); err != nil {
-			log.Printf("click result %d error: %v", i+1, err)
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	emittedLeads := 0
+	var resultErr error
+	for result := range results {
+		if resultErr != nil {
+			continue
+		}
+		if result.err != nil {
+			resultErr = result.err
+			cancel()
 			continue
 		}
 
-		if _, err := page.WaitForSelector(`h1.DUwDvf`, playwright.PageWaitForSelectorOptions{Timeout: playwright.Float(3000)}); err != nil {
-			log.Printf("wait result %d details error: %v", i+1, err)
-		}
-		if err := sleep(ctx, 500*time.Millisecond); err != nil {
-			return err
-		}
-		if err := checkControl(ctx, shouldContinue); err != nil {
-			return err
-		}
-
-		lead := extractLeadData(page)
-		if lead.Name == "" {
+		if err := onLead(result.lead); err != nil {
+			resultErr = err
+			cancel()
 			continue
 		}
-		if err := onLead(lead); err != nil {
-			return err
+		emittedLeads++
+		if emittedLeads >= s.config.MaxResults {
+			cancel()
+			continue
 		}
 	}
 
-	return nil
+	return resultErr
+}
+
+func (s *Scraper) detailConcurrency(resultCount int) int {
+	concurrency := normalizeDetailConcurrency(s.config.DetailConcurrency)
+	if resultCount < concurrency {
+		return resultCount
+	}
+	return concurrency
+}
+
+func normalizeDetailConcurrency(value int) int {
+	if value <= 0 {
+		return 3
+	}
+	if value > 6 {
+		return 6
+	}
+	return value
+}
+
+func sendDetailResult(ctx context.Context, results chan<- detailResult, result detailResult) bool {
+	select {
+	case results <- result:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+func (s *Scraper) extractLeadFromURL(ctx context.Context, page playwright.Page, resultURL string, index int, shouldContinue func() error) (Lead, error) {
+	if err := checkControl(ctx, shouldContinue); err != nil {
+		return Lead{}, err
+	}
+
+	if _, err := page.Goto(resultURL, playwright.PageGotoOptions{
+		Timeout:   playwright.Float(s.config.Timeout),
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+	}); err != nil {
+		log.Printf("open result %d error: %v", index+1, err)
+		return Lead{}, nil
+	}
+
+	if _, err := page.WaitForSelector(`h1.DUwDvf`, playwright.PageWaitForSelectorOptions{Timeout: playwright.Float(5000)}); err != nil {
+		log.Printf("wait result %d details error: %v", index+1, err)
+	}
+	if err := sleep(ctx, 500*time.Millisecond); err != nil {
+		return Lead{}, err
+	}
+	if err := checkControl(ctx, shouldContinue); err != nil {
+		return Lead{}, err
+	}
+
+	return extractLeadData(page), nil
 }
 
 func blockHeavyResources(context playwright.BrowserContext) error {

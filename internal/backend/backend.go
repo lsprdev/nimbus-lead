@@ -32,7 +32,10 @@ const (
 	maxMaxResults       = 500
 )
 
-var errSearchPaused = errors.New("search paused")
+var (
+	errSearchPaused      = errors.New("search paused")
+	errMaxResultsReached = errors.New("max results reached")
+)
 
 type searchJob struct {
 	ListId     string
@@ -369,18 +372,31 @@ func runSearchJob(app core.App, listId, userId, searchTerm, location string, max
 	}
 
 	s := scraper.NewFromEnv()
-	s.SetMaxResults(normalizeMaxResults(maxResults))
-	totalSaved := 0
+	requestedTotal := normalizeMaxResults(maxResults)
+	s.SetMaxResults(requestedTotal)
+	totalSaved, totalErr := listTotalFound(app, listId)
+	if totalErr != nil {
+		log.Printf("read initial total for %s: %v", listId, totalErr)
+		totalSaved = 0
+	}
 	err := s.SearchWithControl(ctx, searchTerm, location, func() error {
 		return ensureSearchIsActive(app, listId, isPaused)
 	}, func(lead scraper.Lead) error {
+		if totalSaved >= requestedTotal {
+			return errMaxResultsReached
+		}
 		created, err := saveContact(app, listId, userId, lead)
 		if err != nil {
 			return err
 		}
 		if created {
 			totalSaved++
-			return incrementListTotal(app, listId)
+			if err := incrementListTotal(app, listId); err != nil {
+				return err
+			}
+			if totalSaved >= requestedTotal {
+				return errMaxResultsReached
+			}
 		}
 		return nil
 	})
@@ -389,6 +405,11 @@ func runSearchJob(app core.App, listId, userId, searchTerm, location string, max
 		if errors.Is(err, errSearchPaused) {
 			return
 		}
+		if errors.Is(err, errMaxResultsReached) {
+			err = nil
+		}
+	}
+	if err != nil {
 		log.Printf("lead list %s failed: %v", listId, err)
 		if updateErr := updateListStatus(app, listId, statusFailed, err.Error()); updateErr != nil {
 			log.Printf("update failed status for %s: %v", listId, updateErr)

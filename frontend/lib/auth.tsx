@@ -5,13 +5,14 @@ import * as React from 'react'
 const AUTH_STORAGE_KEY = 'nimbus.session'
 
 function normalizeBaseUrl(value?: string) {
-  return value?.replace(/\/+$/, '') ?? ''
+  const trimmed = value?.trim()
+  return trimmed ? trimmed.replace(/\/+$/, '') : undefined
 }
 
 export const API_BASE_URL = normalizeBaseUrl(
-  process.env.NEXT_PUBLIC_BASE_URL ??
-    process.env.NEXT_PUBLIC_POCKETBASE_URL ??
-    (process.env.NODE_ENV === 'production' ? '' : 'http://127.0.0.1:8090'),
+  process.env.NEXT_PUBLIC_BASE_URL,
+) ?? normalizeBaseUrl(process.env.NEXT_PUBLIC_POCKETBASE_URL) ?? (
+  process.env.NODE_ENV === 'production' ? '' : 'http://127.0.0.1:8090'
 )
 
 export type AuthUser = {
