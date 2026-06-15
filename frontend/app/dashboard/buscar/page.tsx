@@ -371,16 +371,16 @@ export default function SearchPage() {
   return (
     <>
       <DashboardHeader title="Buscar" />
-      <div className="flex flex-1 flex-col gap-8 p-4 sm:p-6 lg:p-8">
-        <div className="relative overflow-hidden rounded-3xl border bg-card p-6 shadow-sm">
+      <div className="flex flex-1 flex-col gap-5 p-4 sm:p-6">
+        <div className="relative overflow-hidden rounded-3xl border bg-card p-4 shadow-sm sm:p-5">
           <div className="absolute inset-y-0 right-0 w-1/2 bg-linear-to-l from-primary/10 via-primary/5 to-transparent" />
-          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex max-w-3xl flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <h1 className="text-4xl font-semibold tracking-tight text-balance">
+          <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex max-w-3xl flex-col gap-2">
+              <div className="flex flex-col gap-1">
+                <h1 className="text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
                   Buscar contatos
                 </h1>
-                <p className="max-w-2xl text-base text-muted-foreground">
+                <p className="max-w-2xl text-sm leading-5 text-muted-foreground">
                   Crie listas por segmento e região, acompanhe o progresso da
                   coleta e abra os contatos encontrados diretamente no mapa.
                 </p>
@@ -390,7 +390,7 @@ export default function SearchPage() {
             <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
               <DialogTrigger asChild>
                 <Button
-                  size="lg"
+                  size="default"
                   className="w-full gap-2 sm:w-auto"
                   onClick={resetCreateForm}
                 >
@@ -499,7 +499,7 @@ export default function SearchPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-3">
           <MetricCard
             title="Total de listas"
             value={totalLists}
@@ -606,31 +606,33 @@ function MetricCard({
   }[tone];
 
   return (
-    <div className="relative overflow-hidden rounded-3xl border bg-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+    <div className="relative overflow-hidden rounded-3xl border bg-card p-3.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-4">
       <div
         className={cn(
-          "absolute inset-x-0 top-0 h-24 bg-linear-to-b to-transparent",
+          "absolute inset-x-0 top-0 h-16 bg-linear-to-b to-transparent",
           toneClasses.glow,
         )}
       />
-      <div className="relative flex items-start justify-between gap-4">
-        <div className="flex min-w-0 flex-col gap-2">
-          <p className="text-sm font-medium text-muted-foreground">{title}</p>
+      <div className="relative flex items-start justify-between gap-2.5">
+        <div className="flex min-w-0 flex-col gap-1">
+          <p className="text-xs font-medium text-muted-foreground sm:text-sm">
+            {title}
+          </p>
           {loading ? (
-            <Skeleton className="h-8 w-16" />
+            <Skeleton className="h-7 w-14" />
           ) : (
-            <p className="text-4xl font-semibold tracking-tight">
+            <p className="text-2xl font-semibold tracking-tight sm:text-3xl">
               {value.toLocaleString("pt-BR")}
             </p>
           )}
         </div>
         <span
           className={cn(
-            "flex size-12 shrink-0 items-center justify-center rounded-2xl",
+            "flex size-10 shrink-0 items-center justify-center rounded-xl",
             toneClasses.icon,
           )}
         >
-          <Icon className="size-5" />
+          <Icon className="size-4" />
         </span>
       </div>
     </div>
@@ -659,63 +661,60 @@ function LeadListGroupCard({
       onOpenChange={setExpanded}
       className="overflow-hidden rounded-2xl border bg-card shadow-sm transition hover:border-primary/25 hover:shadow-md"
     >
-      <div className="flex flex-col gap-5 p-5">
-        <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
-          <div className="flex min-w-0 items-center gap-4">
-            <span className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary shadow-xs">
-              <Smartphone className="size-6" strokeWidth={2.1} />
-            </span>
-            <div className="flex min-w-0 flex-1 flex-col gap-2">
-              <p className="truncate text-xl font-semibold tracking-tight">
-                {group.title}
-              </p>
-              <Badge
-                variant="secondary"
-                className="w-fit rounded-full px-2.5 py-0.5 text-xs"
-              >
-                {locationText}
-              </Badge>
-            </div>
+      <div className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary shadow-xs">
+            <Smartphone className="size-5" strokeWidth={2.1} />
+          </span>
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <p className="break-words text-lg font-semibold leading-tight tracking-tight">
+              {group.title}
+            </p>
+            <Badge
+              variant="secondary"
+              className="w-fit rounded-full px-2.5 py-0.5 text-xs"
+            >
+              {locationText}
+            </Badge>
           </div>
+        </div>
 
-          <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center 2xl:justify-end">
-            <div className="rounded-xl px-1 text-left sm:min-w-32 sm:text-center">
-              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                Contatos
-              </p>
-              <p className="mt-1 text-3xl font-semibold tracking-tight">
-                {group.totalFound.toLocaleString("pt-BR")}
-              </p>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Button
-                asChild
-                variant="secondary"
-                size="sm"
-                className="justify-start gap-2 rounded-xl sm:w-44"
-              >
-                <Link href={buildSegmentHref(group)}>
-                  <MapIcon className="size-4" />
-                  Ver mapa
-                </Link>
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="justify-start gap-2 rounded-xl sm:w-44"
-                onClick={onAddLocation}
-              >
-                <Plus className="size-4" />
-                Adicionar local
-              </Button>
-            </div>
-          </div>
+        <div className="rounded-xl px-1 text-left md:min-w-24 md:text-center">
+          <p className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+            Contatos
+          </p>
+          <p className="mt-1 text-2xl font-semibold tracking-tight">
+            {group.totalFound.toLocaleString("pt-BR")}
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-2 md:w-40">
+          <Button
+            asChild
+            variant="secondary"
+            size="sm"
+            className="justify-start gap-2 rounded-xl px-3"
+          >
+            <Link href={buildSegmentHref(group)}>
+              <MapIcon className="size-4" />
+              Ver mapa
+            </Link>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="justify-start gap-2 rounded-xl px-3"
+            onClick={onAddLocation}
+          >
+            <Plus className="size-4" />
+            Adicionar local
+          </Button>
         </div>
       </div>
 
-      <div className="border-t bg-muted/15 p-4">
-        <div className="grid gap-3 sm:grid-cols-2">
+      <div className="border-t bg-muted/15 p-3">
+        <div className="grid grid-cols-1 gap-2.5 xl:grid-cols-2">
           {visibleLists.map((list) => (
             <LeadListMiniCard key={list.id} list={list} />
           ))}
@@ -723,7 +722,7 @@ function LeadListGroupCard({
 
         {hasHiddenLocations ? (
           <CollapsibleContent>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="mt-2.5 grid grid-cols-1 gap-2.5 xl:grid-cols-2">
               {group.lists.slice(3).map((list) => (
                 <LeadListMiniCard key={list.id} list={list} />
               ))}
@@ -760,35 +759,35 @@ function LeadListMiniCard({ list }: { list: LeadList }) {
   return (
     <Link
       href={`/dashboard/listas/${list.id}`}
-      className="group/location flex min-w-0 items-center justify-between gap-3 rounded-xl border bg-background p-3 shadow-xs transition hover:border-primary/35 hover:bg-card hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group/location flex min-w-0 items-center justify-between gap-1.5 rounded-xl border bg-background p-2 shadow-xs transition hover:border-primary/35 hover:bg-card hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <div className="flex min-w-0 items-center gap-2.5">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5">
         <span
           className={cn(
-            "flex size-9 shrink-0 items-center justify-center rounded-lg",
+            "flex size-7 shrink-0 items-center justify-center rounded-lg",
             isCompleted
               ? "bg-emerald-500/10 text-emerald-600"
               : "bg-primary/10 text-primary",
           )}
         >
-          <MapPin className="size-4" />
+          <MapPin className="size-3.5" />
         </span>
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold tracking-tight">
+          <p className="truncate text-[0.72rem] font-semibold tracking-tight">
             {list.location || list.name || "Sem localidade"}
           </p>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+          <p className="mt-0.5 truncate text-[0.66rem] text-muted-foreground">
             {list.total_found.toLocaleString("pt-BR")} /{" "}
             {list.max_results.toLocaleString("pt-BR")} contatos
           </p>
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1">
         <Badge
           variant={isCompleted || isPartial ? "secondary" : "default"}
           className={cn(
-            "rounded-full px-2 py-0.5 text-xs",
+            "rounded-full px-1.5 py-0.5 text-[0.64rem]",
             isCompleted &&
               "border-emerald-500/25 bg-emerald-500/10 text-emerald-700",
             isPartial &&
@@ -796,14 +795,14 @@ function LeadListMiniCard({ list }: { list: LeadList }) {
           )}
         >
           {isCompleted ? (
-            <CheckCircle2 className="size-3" />
+            <CheckCircle2 className="size-2.5" />
           ) : isPartial ? (
-            <Clock3 className="size-3" />
+            <Clock3 className="size-2.5" />
           ) : null}
           {statusLabel(list.status)}
         </Badge>
-        <span className="flex size-8 items-center justify-center rounded-full border bg-card text-muted-foreground transition group-hover/location:border-primary group-hover/location:text-primary">
-          <ArrowRight className="size-4" />
+        <span className="flex size-6 items-center justify-center rounded-full border bg-card text-muted-foreground transition group-hover/location:border-primary group-hover/location:text-primary">
+          <ArrowRight className="size-3" />
         </span>
       </div>
     </Link>
