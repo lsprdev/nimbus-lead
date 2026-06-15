@@ -6,11 +6,15 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronsUpDown,
+  Clock3,
   ListChecks,
   Loader2,
+  MapPin,
   Plus,
   Search,
+  Smartphone,
   UsersRound,
   type LucideIcon,
 } from "lucide-react";
@@ -19,6 +23,11 @@ import { toast } from "sonner";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Command,
   CommandEmpty,
@@ -43,6 +52,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { normalizeList, statusLabel, type LeadList } from "@/lib/leads";
 import { useAuth } from "@/lib/auth";
@@ -91,11 +101,84 @@ type ComboboxOption = {
   label: string;
 };
 
+type LeadListGroup = {
+  key: string;
+  title: string;
+  searchTerm: string;
+  lists: LeadList[];
+  totalFound: number;
+  totalRequested: number;
+  completedCount: number;
+  activeCount: number;
+  locations: string[];
+  updated: string;
+};
+
 function normalizeSearchValue(value: string) {
   return value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+}
+
+function formatSegmentTitle(value: string) {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (!normalized) return "Busca sem segmento";
+
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function groupLeadLists(lists: LeadList[]): LeadListGroup[] {
+  const groups = new Map<string, LeadList[]>();
+
+  lists.forEach((list) => {
+    const key = normalizeSearchValue(
+      list.search_term || list.name || "sem-segmento",
+    );
+    groups.set(key, [...(groups.get(key) ?? []), list]);
+  });
+
+  return Array.from(groups.entries())
+    .map(([key, groupLists]) => {
+      const orderedLists = [...groupLists].sort(
+        (a, b) =>
+          Date.parse(b.updated || b.created) -
+          Date.parse(a.updated || a.created),
+      );
+      const totalFound = orderedLists.reduce(
+        (total, list) => total + list.total_found,
+        0,
+      );
+      const totalRequested = orderedLists.reduce(
+        (total, list) => total + list.max_results,
+        0,
+      );
+      const completedCount = orderedLists.filter(
+        (list) => list.status === "completed" || list.status === "partial",
+      ).length;
+      const activeCount = orderedLists.filter(
+        (list) => list.status === "pending" || list.status === "running",
+      ).length;
+      const locations = Array.from(
+        new Set(orderedLists.map((list) => list.location).filter(Boolean)),
+      );
+
+      return {
+        key,
+        title: formatSegmentTitle(
+          orderedLists[0]?.search_term || orderedLists[0]?.name || "",
+        ),
+        searchTerm: orderedLists[0]?.search_term || orderedLists[0]?.name || "",
+        lists: orderedLists,
+        totalFound,
+        totalRequested,
+        completedCount,
+        activeCount,
+        locations,
+        updated: orderedLists[0]?.updated || orderedLists[0]?.created || "",
+      };
+    })
+    .sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated));
 }
 
 export default function SearchPage() {
@@ -104,6 +187,10 @@ export default function SearchPage() {
   const [loadingLists, setLoadingLists] = React.useState(true);
   const [creating, setCreating] = React.useState(false);
   const [createDialogOpen, setCreateDialogOpen] = React.useState(false);
+  const [createDialogMode, setCreateDialogMode] = React.useState<
+    "new" | "segment"
+  >("new");
+  const [listName, setListName] = React.useState("");
   const [searchTerm, setSearchTerm] = React.useState("");
   const [location, setLocation] = React.useState("");
   const [cityOptions, setCityOptions] = React.useState<ComboboxOption[]>([]);
@@ -122,6 +209,7 @@ export default function SearchPage() {
     (total, list) => total + list.total_found,
     0,
   );
+  const groupedLists = React.useMemo(() => groupLeadLists(lists), [lists]);
 
   const loadLists = React.useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) {
@@ -243,6 +331,7 @@ export default function SearchPage() {
       ]);
       toast.success("Lista criada. A busca foi iniciada.");
       setCreateDialogOpen(false);
+      setListName("");
       setSearchTerm("");
       setLocation("");
       form.reset();
@@ -253,6 +342,21 @@ export default function SearchPage() {
     } finally {
       setCreating(false);
     }
+  }
+
+  function resetCreateForm() {
+    setCreateDialogMode("new");
+    setListName("");
+    setSearchTerm("");
+    setLocation("");
+  }
+
+  function openSegmentSearch(group: LeadListGroup) {
+    setCreateDialogMode("segment");
+    setListName(group.title);
+    setSearchTerm(group.searchTerm);
+    setLocation("");
+    setCreateDialogOpen(true);
   }
 
   return (
@@ -276,17 +380,26 @@ export default function SearchPage() {
 
             <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
               <DialogTrigger asChild>
-                <Button size="lg" className="w-full gap-2 sm:w-auto">
+                <Button
+                  size="lg"
+                  className="w-full gap-2 sm:w-auto"
+                  onClick={resetCreateForm}
+                >
                   <Plus className="size-4" />
                   Nova lista
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Nova lista</DialogTitle>
+                  <DialogTitle>
+                    {createDialogMode === "segment"
+                      ? `Novo local para ${listName}`
+                      : "Nova lista"}
+                  </DialogTitle>
                   <DialogDescription>
-                    Defina o termo e a localização para iniciar uma busca em
-                    segundo plano.
+                    {createDialogMode === "segment"
+                      ? "A palavra-chave já está preenchida. Escolha outra localidade para ampliar este segmento."
+                      : "Defina o termo e a localização para iniciar uma busca em segundo plano."}
                   </DialogDescription>
                 </DialogHeader>
                 <form id="create-list-form" onSubmit={handleCreateList}>
@@ -296,6 +409,8 @@ export default function SearchPage() {
                       <Input
                         id="name"
                         name="name"
+                        value={listName}
+                        onChange={(event) => setListName(event.target.value)}
                         placeholder="Restaurantes em São Paulo"
                         required
                       />
@@ -403,30 +518,36 @@ export default function SearchPage() {
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex flex-col gap-1">
               <h2 className="text-2xl font-semibold tracking-tight">
-                Listas recentes
+                Segmentos em acompanhamento
               </h2>
               <p className="text-sm text-muted-foreground">
-                Continue acompanhando buscas em andamento ou revise listas
-                finalizadas.
+                Agrupe buscas do mesmo tema e acompanhe as cidades pesquisadas.
               </p>
             </div>
             {!loadingLists && lists.length ? (
               <span className="text-sm text-muted-foreground">
-                {lists.length}{" "}
-                {lists.length === 1 ? "lista criada" : "listas criadas"}
+                {groupedLists.length}{" "}
+                {groupedLists.length === 1 ? "segmento" : "segmentos"} em{" "}
+                {lists.length} {lists.length === 1 ? "busca" : "buscas"}
               </span>
             ) : null}
           </div>
 
-          <div className="grid gap-3">
+          <div className="grid items-start gap-4 xl:grid-cols-2">
             {loadingLists ? (
               <>
                 <Skeleton className="h-32 w-full rounded-2xl" />
                 <Skeleton className="h-32 w-full rounded-2xl" />
                 <Skeleton className="h-32 w-full rounded-2xl" />
               </>
-            ) : lists.length ? (
-              lists.map((list) => <LeadListCard key={list.id} list={list} />)
+            ) : groupedLists.length ? (
+              groupedLists.map((group) => (
+                <LeadListGroupCard
+                  key={group.key}
+                  group={group}
+                  onAddLocation={() => openSegmentSearch(group)}
+                />
+              ))
             ) : (
               <div className="flex min-h-56 flex-col items-center justify-center gap-3 rounded-2xl border border-dashed bg-card/40 text-center">
                 <span className="flex size-12 items-center justify-center rounded-xl bg-accent text-accent-foreground">
@@ -507,66 +628,215 @@ function MetricCard({
   );
 }
 
-function LeadListCard({ list }: { list: LeadList }) {
-  const reachedSavedLimit = list.total_found <= list.max_results;
+function LeadListGroupCard({
+  group,
+  onAddLocation,
+}: {
+  group: LeadListGroup;
+  onAddLocation: () => void;
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+  const progress = group.totalRequested
+    ? Math.min(Math.round((group.totalFound / group.totalRequested) * 100), 100)
+    : 0;
+  const statusText = group.activeCount
+    ? `${group.activeCount} em andamento`
+    : `${group.completedCount} finalizadas`;
+  const hasHiddenLocations = group.lists.length > 3;
+  const visibleLists = group.lists.slice(0, 3);
+
+  return (
+    <Collapsible
+      open={expanded}
+      onOpenChange={setExpanded}
+      className="overflow-hidden rounded-2xl border bg-card shadow-sm transition hover:border-primary/25 hover:shadow-md"
+    >
+      <div className="flex flex-col gap-5 p-5">
+        <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary shadow-xs">
+              <Smartphone className="size-6" strokeWidth={2.1} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <p className="truncate text-xl font-semibold tracking-tight">
+                  {group.title}
+                </p>
+                <Badge
+                  variant={group.activeCount ? "default" : "secondary"}
+                  className="rounded-full px-2.5 py-0.5 text-xs"
+                >
+                  {statusText}
+                </Badge>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {group.locations.length
+                  ? `${group.locations.length} ${
+                      group.locations.length === 1
+                        ? "localidade"
+                        : "localidades"
+                    } pesquisadas`
+                  : "Sem localidade definida"}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center 2xl:justify-end">
+            <div className="rounded-xl px-1 text-left sm:min-w-32 sm:text-center">
+              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                Contatos
+              </p>
+              <p className="mt-1 text-3xl font-semibold tracking-tight">
+                {group.totalFound.toLocaleString("pt-BR")}{" "}
+                <span className="text-xl font-normal text-muted-foreground">
+                  / {group.totalRequested.toLocaleString("pt-BR")}
+                </span>
+              </p>
+              <p className="text-sm font-semibold text-primary">
+                {progress}% coletado
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2 rounded-xl"
+              onClick={onAddLocation}
+            >
+              <Plus className="size-4" />
+              Adicionar local
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-medium text-muted-foreground">
+              Progresso geral da campanha
+            </p>
+            <p className="text-xs font-semibold">{progress}%</p>
+          </div>
+          <Progress value={progress} className="h-1.5 bg-muted" />
+        </div>
+      </div>
+
+      <div className="border-t bg-muted/15 p-5">
+        <div className="grid gap-3">
+          {visibleLists.map((list) => (
+            <LeadListMiniCard key={list.id} list={list} />
+          ))}
+        </div>
+
+        {hasHiddenLocations ? (
+          <CollapsibleContent>
+            <div className="mt-3 grid gap-3">
+              {group.lists.slice(3).map((list) => (
+                <LeadListMiniCard key={list.id} list={list} />
+              ))}
+            </div>
+          </CollapsibleContent>
+        ) : null}
+
+        {hasHiddenLocations ? (
+          <div className="mt-4 flex justify-center">
+            <CollapsibleTrigger asChild>
+              <Button type="button" variant="outline" size="sm" className="gap-2">
+                {expanded
+                  ? "Mostrar menos"
+                  : `Mostrar mais ${group.lists.length - 3}`}
+                <ChevronDown
+                  className={cn(
+                    "size-4 transition-transform",
+                    expanded && "rotate-180",
+                  )}
+                />
+              </Button>
+            </CollapsibleTrigger>
+          </div>
+        ) : null}
+      </div>
+    </Collapsible>
+  );
+}
+
+function LeadListMiniCard({ list }: { list: LeadList }) {
   const progress = list.max_results
     ? Math.min(Math.round((list.total_found / list.max_results) * 100), 100)
     : 0;
-  const isCompleted = list.status === "completed" || list.status === "partial";
-  const contactsLabel = reachedSavedLimit
-    ? `${list.total_found.toLocaleString("pt-BR")} / ${list.max_results.toLocaleString("pt-BR")}`
-    : list.total_found.toLocaleString("pt-BR");
+  const isCompleted = list.status === "completed";
+  const isPartial = list.status === "partial";
 
   return (
     <Link
       href={`/dashboard/listas/${list.id}`}
-      className="group relative overflow-hidden rounded-2xl border bg-card/90 p-4 shadow-xs transition hover:-translate-y-0.5 hover:border-primary/35 hover:bg-card hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group/location flex min-w-0 flex-col gap-4 rounded-xl border bg-background p-4 shadow-xs transition hover:border-primary/35 hover:bg-card hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <div className="absolute inset-x-0 bottom-0 h-1 bg-muted">
-        <div
-          className="h-full rounded-r-full bg-primary transition-all"
-          style={{ width: `${progress}%` }}
-        />
+      <div className="flex min-w-0 items-start justify-between gap-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <span
+            className={cn(
+              "flex size-10 shrink-0 items-center justify-center rounded-xl",
+              isCompleted
+                ? "bg-emerald-500/10 text-emerald-600"
+                : "bg-primary/10 text-primary",
+            )}
+          >
+            <MapPin className="size-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-base font-semibold tracking-tight">
+              {list.location || list.name || "Sem localidade"}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {list.total_found.toLocaleString("pt-BR")} /{" "}
+              {list.max_results.toLocaleString("pt-BR")} contatos
+            </p>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-3">
+          <Badge
+            variant={isCompleted || isPartial ? "secondary" : "default"}
+            className={cn(
+              "rounded-full px-2.5 py-0.5 text-xs",
+              isCompleted &&
+                "border-emerald-500/25 bg-emerald-500/10 text-emerald-700",
+              isPartial &&
+                "border-amber-500/25 bg-amber-500/10 text-amber-700",
+            )}
+          >
+            {isCompleted ? (
+              <CheckCircle2 className="size-3" />
+            ) : isPartial ? (
+              <Clock3 className="size-3" />
+            ) : null}
+            {statusLabel(list.status)}
+          </Badge>
+          <span className="flex size-8 items-center justify-center rounded-full border bg-card text-muted-foreground transition group-hover/location:border-primary group-hover/location:text-primary">
+            <ArrowRight className="size-4" />
+          </span>
+        </div>
       </div>
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 items-start gap-4">
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/10">
-            <Search className="size-5" strokeWidth={2.25} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <p className="truncate text-lg font-semibold tracking-tight">
-                {list.name}
-              </p>
-              <Badge
-                variant={isCompleted ? "secondary" : "default"}
-                className="rounded-full"
-              >
-                {statusLabel(list.status)}
-              </Badge>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {list.search_term}
-              {list.location ? ` em ${list.location}` : null}
-            </p>
-          </div>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">Progresso</p>
+          <p
+            className={cn(
+              "text-xs font-semibold",
+              isCompleted ? "text-emerald-700" : "text-primary",
+            )}
+          >
+            {progress}%
+          </p>
         </div>
-
-        <div className="flex shrink-0 items-center justify-between gap-3 lg:justify-end">
-          <div className="rounded-2xl bg-muted/60 px-4 py-2 text-right">
-            <p className="text-xs text-muted-foreground">Contatos</p>
-            <p className="text-lg font-semibold tracking-tight">
-              {contactsLabel}
-            </p>
-            {!reachedSavedLimit ? (
-              <p className="text-xs text-muted-foreground">salvos</p>
-            ) : null}
-          </div>
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-full border bg-background text-muted-foreground transition group-hover:border-primary group-hover:bg-primary group-hover:text-primary-foreground">
-            <ArrowRight className="size-5 transition group-hover:translate-x-0.5" />
-          </span>
-        </div>
+        <Progress
+          value={progress}
+          className={cn(
+            "h-1.5 bg-muted",
+            isCompleted && "[&_[data-slot=progress-indicator]]:bg-emerald-500",
+          )}
+        />
       </div>
     </Link>
   );
