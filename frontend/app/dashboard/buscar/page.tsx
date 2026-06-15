@@ -11,6 +11,7 @@ import {
   Clock3,
   ListChecks,
   Loader2,
+  Map as MapIcon,
   MapPin,
   Plus,
   Search,
@@ -52,7 +53,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { normalizeList, statusLabel, type LeadList } from "@/lib/leads";
 import { useAuth } from "@/lib/auth";
@@ -179,6 +179,15 @@ function groupLeadLists(lists: LeadList[]): LeadListGroup[] {
       };
     })
     .sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated));
+}
+
+function buildSegmentHref(group: LeadListGroup) {
+  const params = new URLSearchParams({
+    title: group.title,
+    lists: group.lists.map((list) => list.id).join(","),
+  });
+
+  return `/dashboard/segmentos/${encodeURIComponent(group.key)}?${params.toString()}`;
 }
 
 export default function SearchPage() {
@@ -636,12 +645,11 @@ function LeadListGroupCard({
   onAddLocation: () => void;
 }) {
   const [expanded, setExpanded] = React.useState(false);
-  const progress = group.totalRequested
-    ? Math.min(Math.round((group.totalFound / group.totalRequested) * 100), 100)
-    : 0;
-  const statusText = group.activeCount
-    ? `${group.activeCount} em andamento`
-    : `${group.completedCount} finalizadas`;
+  const locationText = group.locations.length
+    ? `${group.locations.length} ${
+        group.locations.length === 1 ? "localidade" : "localidades"
+      }`
+    : "Sem localidade";
   const hasHiddenLocations = group.lists.length > 3;
   const visibleLists = group.lists.slice(0, 3);
 
@@ -652,32 +660,21 @@ function LeadListGroupCard({
       className="overflow-hidden rounded-2xl border bg-card shadow-sm transition hover:border-primary/25 hover:shadow-md"
     >
       <div className="flex flex-col gap-5 p-5">
-        <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
-          <div className="flex min-w-0 items-start gap-4">
+        <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
+          <div className="flex min-w-0 items-center gap-4">
             <span className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary shadow-xs">
               <Smartphone className="size-6" strokeWidth={2.1} />
             </span>
-            <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <p className="truncate text-xl font-semibold tracking-tight">
-                  {group.title}
-                </p>
-                <Badge
-                  variant={group.activeCount ? "default" : "secondary"}
-                  className="rounded-full px-2.5 py-0.5 text-xs"
-                >
-                  {statusText}
-                </Badge>
-              </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {group.locations.length
-                  ? `${group.locations.length} ${
-                      group.locations.length === 1
-                        ? "localidade"
-                        : "localidades"
-                    } pesquisadas`
-                  : "Sem localidade definida"}
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              <p className="truncate text-xl font-semibold tracking-tight">
+                {group.title}
               </p>
+              <Badge
+                variant="secondary"
+                className="w-fit rounded-full px-2.5 py-0.5 text-xs"
+              >
+                {locationText}
+              </Badge>
             </div>
           </div>
 
@@ -687,41 +684,38 @@ function LeadListGroupCard({
                 Contatos
               </p>
               <p className="mt-1 text-3xl font-semibold tracking-tight">
-                {group.totalFound.toLocaleString("pt-BR")}{" "}
-                <span className="text-xl font-normal text-muted-foreground">
-                  / {group.totalRequested.toLocaleString("pt-BR")}
-                </span>
-              </p>
-              <p className="text-sm font-semibold text-primary">
-                {progress}% coletado
+                {group.totalFound.toLocaleString("pt-BR")}
               </p>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="gap-2 rounded-xl"
-              onClick={onAddLocation}
-            >
-              <Plus className="size-4" />
-              Adicionar local
-            </Button>
+            <div className="flex flex-col gap-2">
+              <Button
+                asChild
+                variant="secondary"
+                size="sm"
+                className="justify-start gap-2 rounded-xl sm:w-44"
+              >
+                <Link href={buildSegmentHref(group)}>
+                  <MapIcon className="size-4" />
+                  Ver mapa
+                </Link>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="justify-start gap-2 rounded-xl sm:w-44"
+                onClick={onAddLocation}
+              >
+                <Plus className="size-4" />
+                Adicionar local
+              </Button>
+            </div>
           </div>
-        </div>
-
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs font-medium text-muted-foreground">
-              Progresso geral da campanha
-            </p>
-            <p className="text-xs font-semibold">{progress}%</p>
-          </div>
-          <Progress value={progress} className="h-1.5 bg-muted" />
         </div>
       </div>
 
-      <div className="border-t bg-muted/15 p-5">
-        <div className="grid gap-3">
+      <div className="border-t bg-muted/15 p-4">
+        <div className="grid gap-3 sm:grid-cols-2">
           {visibleLists.map((list) => (
             <LeadListMiniCard key={list.id} list={list} />
           ))}
@@ -729,7 +723,7 @@ function LeadListGroupCard({
 
         {hasHiddenLocations ? (
           <CollapsibleContent>
-            <div className="mt-3 grid gap-3">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
               {group.lists.slice(3).map((list) => (
                 <LeadListMiniCard key={list.id} list={list} />
               ))}
@@ -760,83 +754,57 @@ function LeadListGroupCard({
 }
 
 function LeadListMiniCard({ list }: { list: LeadList }) {
-  const progress = list.max_results
-    ? Math.min(Math.round((list.total_found / list.max_results) * 100), 100)
-    : 0;
   const isCompleted = list.status === "completed";
   const isPartial = list.status === "partial";
 
   return (
     <Link
       href={`/dashboard/listas/${list.id}`}
-      className="group/location flex min-w-0 flex-col gap-4 rounded-xl border bg-background p-4 shadow-xs transition hover:border-primary/35 hover:bg-card hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group/location flex min-w-0 items-center justify-between gap-3 rounded-xl border bg-background p-3 shadow-xs transition hover:border-primary/35 hover:bg-card hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <div className="flex min-w-0 items-start justify-between gap-4">
-        <div className="flex min-w-0 items-start gap-3">
-          <span
-            className={cn(
-              "flex size-10 shrink-0 items-center justify-center rounded-xl",
-              isCompleted
-                ? "bg-emerald-500/10 text-emerald-600"
-                : "bg-primary/10 text-primary",
-            )}
-          >
-            <MapPin className="size-4" />
-          </span>
-          <div className="min-w-0">
-            <p className="truncate text-base font-semibold tracking-tight">
-              {list.location || list.name || "Sem localidade"}
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {list.total_found.toLocaleString("pt-BR")} /{" "}
-              {list.max_results.toLocaleString("pt-BR")} contatos
-            </p>
-          </div>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-3">
-          <Badge
-            variant={isCompleted || isPartial ? "secondary" : "default"}
-            className={cn(
-              "rounded-full px-2.5 py-0.5 text-xs",
-              isCompleted &&
-                "border-emerald-500/25 bg-emerald-500/10 text-emerald-700",
-              isPartial &&
-                "border-amber-500/25 bg-amber-500/10 text-amber-700",
-            )}
-          >
-            {isCompleted ? (
-              <CheckCircle2 className="size-3" />
-            ) : isPartial ? (
-              <Clock3 className="size-3" />
-            ) : null}
-            {statusLabel(list.status)}
-          </Badge>
-          <span className="flex size-8 items-center justify-center rounded-full border bg-card text-muted-foreground transition group-hover/location:border-primary group-hover/location:text-primary">
-            <ArrowRight className="size-4" />
-          </span>
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span
+          className={cn(
+            "flex size-9 shrink-0 items-center justify-center rounded-lg",
+            isCompleted
+              ? "bg-emerald-500/10 text-emerald-600"
+              : "bg-primary/10 text-primary",
+          )}
+        >
+          <MapPin className="size-4" />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold tracking-tight">
+            {list.location || list.name || "Sem localidade"}
+          </p>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {list.total_found.toLocaleString("pt-BR")} /{" "}
+            {list.max_results.toLocaleString("pt-BR")} contatos
+          </p>
         </div>
       </div>
 
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">Progresso</p>
-          <p
-            className={cn(
-              "text-xs font-semibold",
-              isCompleted ? "text-emerald-700" : "text-primary",
-            )}
-          >
-            {progress}%
-          </p>
-        </div>
-        <Progress
-          value={progress}
+      <div className="flex shrink-0 items-center gap-2">
+        <Badge
+          variant={isCompleted || isPartial ? "secondary" : "default"}
           className={cn(
-            "h-1.5 bg-muted",
-            isCompleted && "[&_[data-slot=progress-indicator]]:bg-emerald-500",
+            "rounded-full px-2 py-0.5 text-xs",
+            isCompleted &&
+              "border-emerald-500/25 bg-emerald-500/10 text-emerald-700",
+            isPartial &&
+              "border-amber-500/25 bg-amber-500/10 text-amber-700",
           )}
-        />
+        >
+          {isCompleted ? (
+            <CheckCircle2 className="size-3" />
+          ) : isPartial ? (
+            <Clock3 className="size-3" />
+          ) : null}
+          {statusLabel(list.status)}
+        </Badge>
+        <span className="flex size-8 items-center justify-center rounded-full border bg-card text-muted-foreground transition group-hover/location:border-primary group-hover/location:text-primary">
+          <ArrowRight className="size-4" />
+        </span>
       </div>
     </Link>
   );

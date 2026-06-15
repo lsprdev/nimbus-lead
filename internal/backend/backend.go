@@ -67,6 +67,7 @@ func Register(app core.App) {
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		e.Router.POST("/api/lead-lists", createLeadList(app, manager)).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/lead-lists", listLeadLists(app)).Bind(apis.RequireAuth("users"))
+		e.Router.GET("/api/lead-segments/contacts", listSegmentContacts(app)).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/lead-lists/{id}", getLeadList(app)).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/lead-lists/{id}/contacts", listContacts(app)).Bind(apis.RequireAuth("users"))
 		e.Router.POST("/api/lead-lists/{id}/pause", pauseLeadList(app, manager)).Bind(apis.RequireAuth("users"))
@@ -285,6 +286,68 @@ func listContacts(app core.App) func(*core.RequestEvent) error {
 
 		return e.JSON(200, records)
 	}
+}
+
+func listSegmentContacts(app core.App) func(*core.RequestEvent) error {
+	return func(e *core.RequestEvent) error {
+		listIds := parseListIds(e.Request.URL.Query().Get("lists"))
+		if len(listIds) == 0 {
+			return e.BadRequestError("At least one list id is required.", nil)
+		}
+		if len(listIds) > 100 {
+			return e.BadRequestError("Too many lists requested.", nil)
+		}
+
+		lists := make([]*core.Record, 0, len(listIds))
+		contacts := make([]*core.Record, 0)
+		for _, listId := range listIds {
+			list, err := findOwnedRecord(app, collectionLeadLists, listId, e.Auth.Id)
+			if err != nil {
+				continue
+			}
+
+			records, err := app.FindRecordsByFilter(
+				collectionContacts,
+				"user={:user} && list={:list}",
+				"created",
+				maxMaxResults,
+				0,
+				dbx.Params{"user": e.Auth.Id, "list": listId},
+			)
+			if err != nil {
+				return e.InternalServerError("Could not list segment contacts.", err)
+			}
+
+			lists = append(lists, list)
+			contacts = append(contacts, records...)
+		}
+
+		if len(lists) == 0 {
+			return e.NotFoundError("Segment not found.", nil)
+		}
+
+		return e.JSON(200, map[string]any{
+			"lists":    lists,
+			"contacts": contacts,
+		})
+	}
+}
+
+func parseListIds(value string) []string {
+	seen := make(map[string]struct{})
+	ids := make([]string, 0)
+	for _, part := range strings.Split(value, ",") {
+		id := strings.TrimSpace(part)
+		if id == "" {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 func pauseLeadList(app core.App, manager *searchJobManager) func(*core.RequestEvent) error {
