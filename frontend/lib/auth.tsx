@@ -3,6 +3,7 @@
 import * as React from 'react'
 
 const AUTH_STORAGE_KEY = 'nimbus.session'
+const MAX_TIMEOUT_DELAY = 2_147_483_647
 
 function normalizeBaseUrl(value?: string) {
   const trimmed = value?.trim()
@@ -25,6 +26,7 @@ export type AuthUser = {
 type StoredSession = {
   token: string
   user: AuthUser
+  expiresAt?: number
 }
 
 type AuthContextValue = {
@@ -71,6 +73,31 @@ function getErrorMessage(payload: unknown, fallback: string) {
   return fallback
 }
 
+function getTokenExpiresAt(token: string) {
+  const payload = token.split('.')[1]
+  if (!payload) return null
+
+  try {
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
+    const decoded = JSON.parse(window.atob(padded)) as { exp?: unknown }
+    const expiresAt = Number(decoded.exp) * 1000
+
+    return Number.isFinite(expiresAt) ? expiresAt : null
+  } catch {
+    return null
+  }
+}
+
+function normalizeSession(session: StoredSession | null) {
+  if (!session?.token || !session.user?.id) return null
+
+  const expiresAt = session.expiresAt ?? getTokenExpiresAt(session.token) ?? undefined
+  if (expiresAt && expiresAt <= Date.now()) return null
+
+  return { ...session, expiresAt }
+}
+
 export function getInitials(name?: string | null, email?: string | null) {
   const source = (name || email || 'U').trim()
   const parts = source.split(/\s+/).filter(Boolean)
@@ -90,17 +117,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const stored = window.localStorage.getItem(AUTH_STORAGE_KEY)
       if (stored) {
-        setSession(JSON.parse(stored) as StoredSession)
+        const restored = normalizeSession(JSON.parse(stored) as StoredSession)
+        if (restored) {
+          setSession(restored)
+          window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(restored))
+        } else {
+          window.localStorage.removeItem(AUTH_STORAGE_KEY)
+        }
       }
     } finally {
       setIsLoading(false)
     }
   }, [])
 
-  const persistSession = React.useCallback((nextSession: StoredSession) => {
-    setSession(nextSession)
-    window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(nextSession))
+  const clearSession = React.useCallback(() => {
+    setSession(null)
+    window.localStorage.removeItem(AUTH_STORAGE_KEY)
   }, [])
+
+  const persistSession = React.useCallback((nextSession: StoredSession) => {
+    const normalized = normalizeSession(nextSession)
+    if (!normalized) {
+      window.localStorage.removeItem(AUTH_STORAGE_KEY)
+      setSession(null)
+      return
+    }
+
+    setSession(normalized)
+    window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(normalized))
+  }, [])
+
+  React.useEffect(() => {
+    if (!session?.token) return
+
+    const expiresAt = session.expiresAt ?? getTokenExpiresAt(session.token)
+    if (!expiresAt) return
+
+    const delay = expiresAt - Date.now()
+    if (delay <= 0) {
+      clearSession()
+      return
+    }
+
+    const timeout = window.setTimeout(clearSession, Math.min(delay, MAX_TIMEOUT_DELAY))
+    return () => window.clearTimeout(timeout)
+  }, [clearSession, session?.expiresAt, session?.token])
 
   const login = React.useCallback(
     async (email: string, password: string) => {
@@ -118,6 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       persistSession({
         token: String(payload.token),
         user: normalizeUser(payload.record ?? payload.model ?? {}),
+        expiresAt: getTokenExpiresAt(String(payload.token)) ?? undefined,
       })
     },
     [persistSession],
@@ -147,9 +209,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   )
 
   const logout = React.useCallback(() => {
-    setSession(null)
-    window.localStorage.removeItem(AUTH_STORAGE_KEY)
-  }, [])
+    clearSession()
+  }, [clearSession])
 
   const updateUser = React.useCallback((user: Partial<AuthUser>) => {
     setSession((current) => {
@@ -168,18 +229,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const authFetch = React.useCallback(
-    (path: string, init: RequestInit = {}) => {
+    async (path: string, init: RequestInit = {}) => {
+      if (session?.token) {
+        const expiresAt = session.expiresAt ?? getTokenExpiresAt(session.token)
+        if (expiresAt && expiresAt <= Date.now()) {
+          clearSession()
+          return new Response(null, { status: 401, statusText: 'Sessão expirada' })
+        }
+      }
+
       const headers = new Headers(init.headers)
       if (session?.token) {
         headers.set('Authorization', `Bearer ${session.token}`)
       }
 
-      return fetch(`${API_BASE_URL}${path}`, {
+      const response = await fetch(`${API_BASE_URL}${path}`, {
         ...init,
         headers,
       })
+
+      if (session?.token && (response.status === 401 || response.status === 403)) {
+        clearSession()
+      }
+
+      return response
     },
-    [session?.token],
+    [clearSession, session?.expiresAt, session?.token],
   )
 
   const value = React.useMemo<AuthContextValue>(
