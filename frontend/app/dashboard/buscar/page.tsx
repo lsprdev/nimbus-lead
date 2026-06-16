@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronsUpDown,
-  Clock3,
   ListChecks,
   Loader2,
   Map as MapIcon,
@@ -54,7 +53,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
-import { normalizeList, statusLabel, type LeadList } from "@/lib/leads";
+import { normalizeList, type LeadList } from "@/lib/leads";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
@@ -754,7 +753,10 @@ function LeadListGroupCard({
 
 function LeadListMiniCard({ list }: { list: LeadList }) {
   const isCompleted = list.status === "completed";
-  const isPartial = list.status === "partial";
+  const contactsLabel =
+    list.total_found === 1
+      ? "1 contato"
+      : `${list.total_found.toLocaleString("pt-BR")} contatos`;
 
   return (
     <Link
@@ -777,30 +779,12 @@ function LeadListMiniCard({ list }: { list: LeadList }) {
             {list.location || list.name || "Sem localidade"}
           </p>
           <p className="mt-0.5 truncate text-[0.66rem] text-muted-foreground">
-            {list.total_found.toLocaleString("pt-BR")} /{" "}
-            {list.max_results.toLocaleString("pt-BR")} contatos
+            {contactsLabel}
           </p>
         </div>
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
-        <Badge
-          variant={isCompleted || isPartial ? "secondary" : "default"}
-          className={cn(
-            "rounded-full px-1.5 py-0.5 text-[0.64rem]",
-            isCompleted &&
-              "border-emerald-500/25 bg-emerald-500/10 text-emerald-700",
-            isPartial &&
-              "border-amber-500/25 bg-amber-500/10 text-amber-700",
-          )}
-        >
-          {isCompleted ? (
-            <CheckCircle2 className="size-2.5" />
-          ) : isPartial ? (
-            <Clock3 className="size-2.5" />
-          ) : null}
-          {statusLabel(list.status)}
-        </Badge>
         <span className="flex size-6 items-center justify-center rounded-full border bg-card text-muted-foreground transition group-hover/location:border-primary group-hover/location:text-primary">
           <ArrowRight className="size-3" />
         </span>
