@@ -23,7 +23,7 @@ import {
   normalizeContactCollection,
   type ContactCollection,
 } from '@/lib/collections'
-import { normalizeContact, type Contact } from '@/lib/leads'
+import { normalizeContact, normalizeList, type Contact } from '@/lib/leads'
 import { cn } from '@/lib/utils'
 
 type CollectionContactsPayload = {
@@ -48,6 +48,11 @@ function hasHighRating(contact: Contact) {
   return value !== null && value >= 4.5
 }
 
+type CollectionMembership = {
+  contact_id?: string
+  collection_id?: string
+}
+
 export default function CollectionDetailPage({
   params,
 }: {
@@ -61,6 +66,71 @@ export default function CollectionDetailPage({
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
+    async function loadCollectionContactsFallback() {
+      const collectionsResponse = await authFetch('/api/contact-collections')
+      const collectionsPayload = await collectionsResponse.json().catch(() => [])
+      if (!collectionsResponse.ok) {
+        throw new Error('Não foi possível carregar suas coleções.')
+      }
+
+      const collections = Array.isArray(collectionsPayload)
+        ? collectionsPayload.map(normalizeContactCollection)
+        : []
+      const currentCollection = collections.find((item) => item.id === id)
+      if (!currentCollection) {
+        throw new Error('Coleção não encontrada.')
+      }
+      setCollection(currentCollection)
+
+      const membershipsResponse = await authFetch('/api/contact-collections/memberships')
+      const membershipsPayload = await membershipsResponse.json().catch(() => [])
+      if (!membershipsResponse.ok) {
+        throw new Error('Não foi possível carregar os contatos desta coleção.')
+      }
+
+      const contactIds = new Set(
+        (Array.isArray(membershipsPayload) ? membershipsPayload : [])
+          .filter(
+            (membership: CollectionMembership) =>
+              String(membership.collection_id ?? '') === id,
+          )
+          .map((membership: CollectionMembership) =>
+            String(membership.contact_id ?? ''),
+          )
+          .filter(Boolean),
+      )
+
+      if (!contactIds.size) {
+        setContacts([])
+        return
+      }
+
+      const listsResponse = await authFetch('/api/lead-lists')
+      const listsPayload = await listsResponse.json().catch(() => [])
+      if (!listsResponse.ok) {
+        throw new Error('Não foi possível carregar suas buscas.')
+      }
+
+      const lists = Array.isArray(listsPayload)
+        ? listsPayload.map(normalizeList)
+        : []
+      const contactGroups = await Promise.all(
+        lists.map(async (list) => {
+          const response = await authFetch(`/api/lead-lists/${list.id}/contacts`)
+          const payload = await response.json().catch(() => [])
+          return response.ok && Array.isArray(payload)
+            ? payload.map(normalizeContact)
+            : []
+        }),
+      )
+
+      setContacts(
+        contactGroups
+          .flat()
+          .filter((contact) => contactIds.has(contact.id)),
+      )
+    }
+
     async function loadCollectionContacts() {
       setLoading(true)
       try {
@@ -69,6 +139,10 @@ export default function CollectionDetailPage({
           .json()
           .catch(() => ({}))
         if (!response.ok) {
+          if (response.status === 404) {
+            await loadCollectionContactsFallback()
+            return
+          }
           throw new Error(
             (payload as { message?: string })?.message ??
               'Não foi possível carregar a coleção.',

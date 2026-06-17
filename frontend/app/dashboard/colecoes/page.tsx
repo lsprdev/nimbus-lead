@@ -353,19 +353,34 @@ export default function CollectionsPage() {
                       size="icon"
                       className="size-10 shrink-0 rounded-full"
                       aria-label={`Abrir ações da coleção ${collection.name}`}
+                      onPointerDown={(event) => event.stopPropagation()}
                       onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
                     >
                       <MoreVertical className="size-4" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-44">
-                    <DropdownMenuItem onSelect={() => openEditDialog(collection)}>
+                  <DropdownMenuContent
+                    align="end"
+                    className="w-44"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <DropdownMenuItem
+                      onSelect={(event) => {
+                        event.preventDefault()
+                        openEditDialog(collection)
+                      }}
+                    >
                       <Pencil className="size-4" />
                       Editar
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       variant="destructive"
-                      onSelect={() => setCollectionToDelete(collection)}
+                      onSelect={(event) => {
+                        event.preventDefault()
+                        setCollectionToDelete(collection)
+                      }}
                     >
                       <Trash2 className="size-4" />
                       Excluir

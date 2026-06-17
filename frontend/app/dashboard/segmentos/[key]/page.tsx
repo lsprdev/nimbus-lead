@@ -942,12 +942,12 @@ function ContactCard({
         isSelected ? "border-primary/45 shadow-sm" : "border-border",
       )}
     >
-      <div className="flex min-w-0 items-start justify-between gap-3">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_2.25rem] items-start gap-3">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <p
               className={cn(
-                "min-w-0 text-base font-semibold leading-6",
+                "min-w-0 max-w-full break-words text-base font-semibold leading-6",
                 isSelected ? "text-primary" : "text-foreground",
               )}
             >
@@ -965,7 +965,7 @@ function ContactCard({
           type="button"
           variant="outline"
           size="icon"
-          className="size-9 shrink-0 rounded-xl"
+          className="size-9 shrink-0 rounded-xl justify-self-end"
           aria-label={
             isSavedToCollection
               ? `${contact.name} já está em uma coleção`
