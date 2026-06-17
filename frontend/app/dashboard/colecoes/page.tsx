@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import { Loader2, MoreVertical, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -53,6 +54,7 @@ const COLLECTION_COLOR_OPTIONS = [
 ] as const
 
 export default function CollectionsPage() {
+  const router = useRouter()
   const { authFetch } = useAuth()
   const [collections, setCollections] = React.useState<ContactCollection[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -196,6 +198,20 @@ export default function CollectionsPage() {
     }
   }
 
+  function openCollection(collectionId: string) {
+    router.push(`/dashboard/colecoes/${collectionId}`)
+  }
+
+  function handleCollectionKeyDown(
+    event: React.KeyboardEvent<HTMLDivElement>,
+    collectionId: string,
+  ) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      openCollection(collectionId)
+    }
+  }
+
   return (
     <>
       <DashboardHeader title="Coleções" />
@@ -303,7 +319,11 @@ export default function CollectionsPage() {
             collections.map((collection) => (
               <div
                 key={collection.id}
-                className="flex min-w-0 items-center justify-between gap-4 rounded-2xl border bg-card p-5 shadow-sm"
+                role="button"
+                tabIndex={0}
+                className="flex min-w-0 cursor-pointer items-center justify-between gap-4 rounded-2xl border bg-card p-5 shadow-sm outline-none transition hover:border-primary/35 hover:bg-primary/5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => openCollection(collection.id)}
+                onKeyDown={(event) => handleCollectionKeyDown(event, collection.id)}
               >
                 <div className="flex min-w-0 items-center gap-4">
                   <span
@@ -333,6 +353,7 @@ export default function CollectionsPage() {
                       size="icon"
                       className="size-10 shrink-0 rounded-full"
                       aria-label={`Abrir ações da coleção ${collection.name}`}
+                      onClick={(event) => event.stopPropagation()}
                     >
                       <MoreVertical className="size-4" />
                     </Button>
