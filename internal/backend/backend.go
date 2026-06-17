@@ -19,17 +19,19 @@ import (
 )
 
 const (
-	collectionLeadLists = "lead_lists"
-	collectionContacts  = "contacts"
-	statusPending       = "pending"
-	statusRunning       = "running"
-	statusPaused        = "paused"
-	statusCompleted     = "completed"
-	statusPartial       = "partial"
-	statusFailed        = "failed"
-	defaultMaxResults   = 30
-	minMaxResults       = 1
-	maxMaxResults       = 500
+	collectionLeadLists              = "lead_lists"
+	collectionContacts               = "contacts"
+	collectionContactCollections     = "contact_collections"
+	collectionContactCollectionItems = "contact_collection_items"
+	statusPending                    = "pending"
+	statusRunning                    = "running"
+	statusPaused                     = "paused"
+	statusCompleted                  = "completed"
+	statusPartial                    = "partial"
+	statusFailed                     = "failed"
+	defaultMaxResults                = 30
+	minMaxResults                    = 1
+	maxMaxResults                    = 500
 )
 
 var (
@@ -55,10 +57,27 @@ type searchJobManager struct {
 }
 
 type createListRequest struct {
-	Name       string `json:"name"`
-	SearchTerm string `json:"searchTerm"`
-	Location   string `json:"location"`
-	MaxResults int    `json:"maxResults"`
+	Name          string `json:"name"`
+	SearchTerm    string `json:"searchTerm"`
+	Location      string `json:"location"`
+	MaxResults    int    `json:"maxResults"`
+	SegmentIcon   string `json:"segmentIcon"`
+	SegmentColor  string `json:"segmentColor"`
+	SegmentPinned bool   `json:"segmentPinned"`
+}
+
+type pinSegmentRequest struct {
+	ListIds []string `json:"listIds"`
+	Pinned  bool     `json:"pinned"`
+}
+
+type createContactCollectionRequest struct {
+	Name  string `json:"name"`
+	Color string `json:"color"`
+}
+
+type addContactToCollectionRequest struct {
+	ContactId string `json:"contactId"`
 }
 
 func Register(app core.App) {
@@ -68,11 +87,20 @@ func Register(app core.App) {
 		e.Router.POST("/api/lead-lists", createLeadList(app, manager)).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/lead-lists", listLeadLists(app)).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/lead-segments/contacts", listSegmentContacts(app)).Bind(apis.RequireAuth("users"))
+		e.Router.POST("/api/lead-segments/pin", pinLeadSegment(app)).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/lead-lists/{id}", getLeadList(app)).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/lead-lists/{id}/contacts", listContacts(app)).Bind(apis.RequireAuth("users"))
 		e.Router.POST("/api/lead-lists/{id}/pause", pauseLeadList(app, manager)).Bind(apis.RequireAuth("users"))
 		e.Router.POST("/api/lead-lists/{id}/resume", resumeLeadList(app, manager)).Bind(apis.RequireAuth("users"))
 		e.Router.DELETE("/api/lead-lists/{id}", deleteLeadList(app, manager)).Bind(apis.RequireAuth("users"))
+		e.Router.GET("/api/contact-collections", listContactCollections(app)).Bind(apis.RequireAuth("users"))
+		e.Router.GET("/api/contact-collections/contact-ids", listCollectedContactIds(app)).Bind(apis.RequireAuth("users"))
+		e.Router.GET("/api/contact-collections/memberships", listContactCollectionMemberships(app)).Bind(apis.RequireAuth("users"))
+		e.Router.POST("/api/contact-collections", createContactCollection(app)).Bind(apis.RequireAuth("users"))
+		e.Router.PATCH("/api/contact-collections/{id}", updateContactCollection(app)).Bind(apis.RequireAuth("users"))
+		e.Router.DELETE("/api/contact-collections/{id}", deleteContactCollection(app)).Bind(apis.RequireAuth("users"))
+		e.Router.DELETE("/api/contact-collections/contacts/{id}", removeContactFromCollections(app)).Bind(apis.RequireAuth("users"))
+		e.Router.POST("/api/contact-collections/{id}/contacts", addContactToCollection(app)).Bind(apis.RequireAuth("users"))
 
 		manager.start()
 		manager.enqueueRecoverableJobs()
@@ -201,9 +229,14 @@ func createLeadList(app core.App, manager *searchJobManager) func(*core.RequestE
 		payload.SearchTerm = strings.TrimSpace(payload.SearchTerm)
 		payload.Location = strings.TrimSpace(payload.Location)
 		payload.MaxResults = normalizeMaxResults(payload.MaxResults)
+		payload.SegmentIcon = normalizeSegmentIcon(payload.SegmentIcon)
+		payload.SegmentColor = normalizeSegmentColor(payload.SegmentColor)
 
 		if payload.Name == "" || payload.SearchTerm == "" {
 			return e.BadRequestError("Name and searchTerm are required.", nil)
+		}
+		if payload.Location == "" {
+			return e.BadRequestError("Location is required.", nil)
 		}
 
 		collection, err := app.FindCollectionByNameOrId(collectionLeadLists)
@@ -217,6 +250,9 @@ func createLeadList(app core.App, manager *searchJobManager) func(*core.RequestE
 		record.Set("search_term", payload.SearchTerm)
 		record.Set("location", payload.Location)
 		record.Set("max_results", payload.MaxResults)
+		record.Set("segment_icon", payload.SegmentIcon)
+		record.Set("segment_color", payload.SegmentColor)
+		record.Set("segment_pinned", payload.SegmentPinned)
 		record.Set("status", statusPending)
 		record.Set("total_found", 0)
 
@@ -274,7 +310,7 @@ func listContacts(app core.App) func(*core.RequestEvent) error {
 
 		records, err := app.FindRecordsByFilter(
 			collectionContacts,
-			"user={:user} && list={:list}",
+			"user={:user} && list={:list} && phone != ''",
 			"created",
 			500,
 			0,
@@ -308,7 +344,7 @@ func listSegmentContacts(app core.App) func(*core.RequestEvent) error {
 
 			records, err := app.FindRecordsByFilter(
 				collectionContacts,
-				"user={:user} && list={:list}",
+				"user={:user} && list={:list} && phone != ''",
 				"created",
 				maxMaxResults,
 				0,
@@ -333,11 +369,395 @@ func listSegmentContacts(app core.App) func(*core.RequestEvent) error {
 	}
 }
 
+func listContactCollections(app core.App) func(*core.RequestEvent) error {
+	return func(e *core.RequestEvent) error {
+		records, err := app.FindRecordsByFilter(
+			collectionContactCollections,
+			"user={:user}",
+			"-created",
+			200,
+			0,
+			dbx.Params{"user": e.Auth.Id},
+		)
+		if err != nil {
+			return e.InternalServerError("Could not list collections.", err)
+		}
+
+		collections := make([]map[string]any, 0, len(records))
+		for _, record := range records {
+			collections = append(collections, map[string]any{
+				"id":            record.Id,
+				"name":          record.GetString("name"),
+				"color":         normalizeCollectionColor(record.GetString("color")),
+				"contact_count": countCollectionContacts(app, record.Id, e.Auth.Id),
+				"created":       record.GetDateTime("created").String(),
+				"updated":       record.GetDateTime("updated").String(),
+			})
+		}
+
+		return e.JSON(200, collections)
+	}
+}
+
+func listCollectedContactIds(app core.App) func(*core.RequestEvent) error {
+	return func(e *core.RequestEvent) error {
+		records, err := app.FindRecordsByFilter(
+			collectionContactCollectionItems,
+			"user={:user}",
+			"",
+			10000,
+			0,
+			dbx.Params{"user": e.Auth.Id},
+		)
+		if err != nil {
+			return e.InternalServerError("Could not list collected contacts.", err)
+		}
+
+		ids := make([]string, 0, len(records))
+		seen := make(map[string]struct{}, len(records))
+		for _, record := range records {
+			contactId := record.GetString("contact")
+			if contactId == "" {
+				continue
+			}
+			if _, ok := seen[contactId]; ok {
+				continue
+			}
+			seen[contactId] = struct{}{}
+			ids = append(ids, contactId)
+		}
+
+		return e.JSON(200, ids)
+	}
+}
+
+func listContactCollectionMemberships(app core.App) func(*core.RequestEvent) error {
+	return func(e *core.RequestEvent) error {
+		records, err := app.FindRecordsByFilter(
+			collectionContactCollectionItems,
+			"user={:user}",
+			"-created",
+			10000,
+			0,
+			dbx.Params{"user": e.Auth.Id},
+		)
+		if err != nil {
+			return e.InternalServerError("Could not list collection memberships.", err)
+		}
+
+		memberships := make([]map[string]string, 0, len(records))
+		for _, record := range records {
+			contactId := record.GetString("contact")
+			collectionId := record.GetString("collection")
+			if contactId == "" || collectionId == "" {
+				continue
+			}
+
+			memberships = append(memberships, map[string]string{
+				"contact_id":    contactId,
+				"collection_id": collectionId,
+			})
+		}
+
+		return e.JSON(200, memberships)
+	}
+}
+
+func createContactCollection(app core.App) func(*core.RequestEvent) error {
+	return func(e *core.RequestEvent) error {
+		var payload createContactCollectionRequest
+		if err := e.BindBody(&payload); err != nil {
+			return e.BadRequestError("Invalid request body.", err)
+		}
+
+		name := strings.TrimSpace(payload.Name)
+		color := normalizeCollectionColor(payload.Color)
+		if name == "" {
+			return e.BadRequestError("Collection name is required.", nil)
+		}
+		if len(name) > 180 {
+			return e.BadRequestError("Collection name is too long.", nil)
+		}
+		existing, err := app.FindRecordsByFilter(
+			collectionContactCollections,
+			"user={:user} && name={:name}",
+			"",
+			1,
+			0,
+			dbx.Params{"user": e.Auth.Id, "name": name},
+		)
+		if err != nil {
+			return e.InternalServerError("Could not check collection.", err)
+		}
+		if len(existing) > 0 {
+			return e.BadRequestError("Collection already exists.", nil)
+		}
+
+		collection, err := app.FindCollectionByNameOrId(collectionContactCollections)
+		if err != nil {
+			return e.InternalServerError("contact_collections collection not found.", err)
+		}
+
+		record := core.NewRecord(collection)
+		record.Set("user", e.Auth.Id)
+		record.Set("name", name)
+		record.Set("color", color)
+		if err := app.Save(record); err != nil {
+			return e.InternalServerError("Could not create collection.", err)
+		}
+
+		return e.JSON(201, map[string]any{
+			"id":            record.Id,
+			"name":          record.GetString("name"),
+			"color":         normalizeCollectionColor(record.GetString("color")),
+			"contact_count": 0,
+			"created":       record.GetDateTime("created").String(),
+			"updated":       record.GetDateTime("updated").String(),
+		})
+	}
+}
+
+func updateContactCollection(app core.App) func(*core.RequestEvent) error {
+	return func(e *core.RequestEvent) error {
+		collectionId := strings.TrimSpace(e.Request.PathValue("id"))
+		record, err := findOwnedRecord(app, collectionContactCollections, collectionId, e.Auth.Id)
+		if err != nil {
+			return e.NotFoundError("Collection not found.", err)
+		}
+
+		var payload createContactCollectionRequest
+		if err := e.BindBody(&payload); err != nil {
+			return e.BadRequestError("Invalid request body.", err)
+		}
+
+		name := strings.TrimSpace(payload.Name)
+		color := normalizeCollectionColor(payload.Color)
+		if name == "" {
+			return e.BadRequestError("Collection name is required.", nil)
+		}
+		if len(name) > 180 {
+			return e.BadRequestError("Collection name is too long.", nil)
+		}
+
+		existing, err := app.FindRecordsByFilter(
+			collectionContactCollections,
+			"user={:user} && name={:name}",
+			"",
+			10,
+			0,
+			dbx.Params{"user": e.Auth.Id, "name": name},
+		)
+		if err != nil {
+			return e.InternalServerError("Could not check collection.", err)
+		}
+		for _, existingRecord := range existing {
+			if existingRecord.Id != record.Id {
+				return e.BadRequestError("Collection already exists.", nil)
+			}
+		}
+
+		record.Set("name", name)
+		record.Set("color", color)
+		if err := app.Save(record); err != nil {
+			return e.InternalServerError("Could not update collection.", err)
+		}
+
+		return e.JSON(200, map[string]any{
+			"id":            record.Id,
+			"name":          record.GetString("name"),
+			"color":         normalizeCollectionColor(record.GetString("color")),
+			"contact_count": countCollectionContacts(app, record.Id, e.Auth.Id),
+			"created":       record.GetDateTime("created").String(),
+			"updated":       record.GetDateTime("updated").String(),
+		})
+	}
+}
+
+func deleteContactCollection(app core.App) func(*core.RequestEvent) error {
+	return func(e *core.RequestEvent) error {
+		record, err := findOwnedRecord(app, collectionContactCollections, e.Request.PathValue("id"), e.Auth.Id)
+		if err != nil {
+			return e.NotFoundError("Collection not found.", err)
+		}
+		if err := app.Delete(record); err != nil {
+			return e.InternalServerError("Could not delete collection.", err)
+		}
+
+		return e.NoContent(http.StatusNoContent)
+	}
+}
+
+func removeContactFromCollections(app core.App) func(*core.RequestEvent) error {
+	return func(e *core.RequestEvent) error {
+		contactId := strings.TrimSpace(e.Request.PathValue("id"))
+		if contactId == "" {
+			return e.BadRequestError("Contact id is required.", nil)
+		}
+		if _, err := findOwnedRecord(app, collectionContacts, contactId, e.Auth.Id); err != nil {
+			return e.NotFoundError("Contact not found.", err)
+		}
+
+		records, err := app.FindRecordsByFilter(
+			collectionContactCollectionItems,
+			"user={:user} && contact={:contact}",
+			"",
+			1000,
+			0,
+			dbx.Params{"user": e.Auth.Id, "contact": contactId},
+		)
+		if err != nil {
+			return e.InternalServerError("Could not list contact collections.", err)
+		}
+
+		previousCollectionIds := make([]string, 0, len(records))
+		for _, record := range records {
+			collectionId := record.GetString("collection")
+			if collectionId != "" {
+				previousCollectionIds = append(previousCollectionIds, collectionId)
+			}
+			if err := app.Delete(record); err != nil {
+				return e.InternalServerError("Could not remove contact from collections.", err)
+			}
+		}
+
+		return e.JSON(200, map[string]any{
+			"removed":                 true,
+			"previous_collection_ids": previousCollectionIds,
+		})
+	}
+}
+
+func addContactToCollection(app core.App) func(*core.RequestEvent) error {
+	return func(e *core.RequestEvent) error {
+		collectionId := strings.TrimSpace(e.Request.PathValue("id"))
+		var payload addContactToCollectionRequest
+		if err := e.BindBody(&payload); err != nil {
+			return e.BadRequestError("Invalid request body.", err)
+		}
+		contactId := strings.TrimSpace(payload.ContactId)
+		if contactId == "" {
+			return e.BadRequestError("Contact id is required.", nil)
+		}
+
+		if _, err := findOwnedRecord(app, collectionContactCollections, collectionId, e.Auth.Id); err != nil {
+			return e.NotFoundError("Collection not found.", err)
+		}
+		if _, err := findOwnedRecord(app, collectionContacts, contactId, e.Auth.Id); err != nil {
+			return e.NotFoundError("Contact not found.", err)
+		}
+
+		existingContactItems, err := app.FindRecordsByFilter(
+			collectionContactCollectionItems,
+			"user={:user} && contact={:contact}",
+			"",
+			1000,
+			0,
+			dbx.Params{"user": e.Auth.Id, "contact": contactId},
+		)
+		if err != nil {
+			return e.InternalServerError("Could not check collection item.", err)
+		}
+
+		previousCollectionIds := make([]string, 0, len(existingContactItems))
+		var targetRecord *core.Record
+		for _, item := range existingContactItems {
+			itemCollectionId := item.GetString("collection")
+			if itemCollectionId != "" {
+				previousCollectionIds = append(previousCollectionIds, itemCollectionId)
+			}
+			if itemCollectionId == collectionId && targetRecord == nil {
+				targetRecord = item
+				continue
+			}
+			if err := app.Delete(item); err != nil {
+				return e.InternalServerError("Could not move contact between collections.", err)
+			}
+		}
+
+		duplicate := targetRecord != nil
+		if targetRecord == nil {
+			items, err := app.FindCollectionByNameOrId(collectionContactCollectionItems)
+			if err != nil {
+				return e.InternalServerError("contact_collection_items collection not found.", err)
+			}
+
+			record := core.NewRecord(items)
+			record.Set("user", e.Auth.Id)
+			record.Set("collection", collectionId)
+			record.Set("contact", contactId)
+			if err := app.Save(record); err != nil {
+				return e.InternalServerError("Could not save contact to collection.", err)
+			}
+		}
+
+		return e.JSON(200, map[string]any{
+			"saved":                   true,
+			"duplicate":               duplicate,
+			"collection_id":           collectionId,
+			"previous_collection_ids": previousCollectionIds,
+		})
+	}
+}
+
+func pinLeadSegment(app core.App) func(*core.RequestEvent) error {
+	return func(e *core.RequestEvent) error {
+		var payload pinSegmentRequest
+		if err := e.BindBody(&payload); err != nil {
+			return e.BadRequestError("Invalid request body.", err)
+		}
+
+		listIds := uniqueListIds(payload.ListIds)
+		if len(listIds) == 0 {
+			return e.BadRequestError("At least one list id is required.", nil)
+		}
+		if len(listIds) > 100 {
+			return e.BadRequestError("Too many lists requested.", nil)
+		}
+
+		records := make([]*core.Record, 0, len(listIds))
+		for _, listId := range listIds {
+			record, err := findOwnedRecord(app, collectionLeadLists, listId, e.Auth.Id)
+			if err != nil {
+				continue
+			}
+
+			record.Set("segment_pinned", payload.Pinned)
+			if err := app.Save(record); err != nil {
+				return e.InternalServerError("Could not update segment pin.", err)
+			}
+			records = append(records, record)
+		}
+
+		if len(records) == 0 {
+			return e.NotFoundError("Segment not found.", nil)
+		}
+
+		return e.JSON(200, records)
+	}
+}
+
 func parseListIds(value string) []string {
 	seen := make(map[string]struct{})
 	ids := make([]string, 0)
 	for _, part := range strings.Split(value, ",") {
 		id := strings.TrimSpace(part)
+		if id == "" {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func uniqueListIds(values []string) []string {
+	seen := make(map[string]struct{})
+	ids := make([]string, 0, len(values))
+	for _, value := range values {
+		id := strings.TrimSpace(value)
 		if id == "" {
 			continue
 		}
@@ -526,7 +946,44 @@ func normalizeMaxResults(maxResults int) int {
 	return maxResults
 }
 
+func normalizeSegmentIcon(value string) string {
+	normalized := strings.TrimSpace(value)
+	switch normalized {
+	case "store", "coffee", "heart", "bag", "business", "fitness":
+		return normalized
+	default:
+		return "smartphone"
+	}
+}
+
+func normalizeSegmentColor(value string) string {
+	normalized := strings.TrimSpace(value)
+	switch normalized {
+	case "emerald", "amber", "rose", "violet", "slate":
+		return normalized
+	default:
+		return "blue"
+	}
+}
+
+func normalizeCollectionColor(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if len(normalized) != 7 || !strings.HasPrefix(normalized, "#") {
+		return "#2563eb"
+	}
+	for _, char := range normalized[1:] {
+		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f')) {
+			return "#2563eb"
+		}
+	}
+	return normalized
+}
+
 func saveContact(app core.App, listId, userId string, lead scraper.Lead) (bool, error) {
+	if strings.TrimSpace(lead.Phone) == "" {
+		return false, nil
+	}
+
 	collection, err := app.FindCollectionByNameOrId(collectionContacts)
 	if err != nil {
 		return false, err
@@ -614,6 +1071,21 @@ func listTotalFound(app core.App, listId string) (int, error) {
 		return 0, err
 	}
 	return record.GetInt("total_found"), nil
+}
+
+func countCollectionContacts(app core.App, collectionId, userId string) int {
+	records, err := app.FindRecordsByFilter(
+		collectionContactCollectionItems,
+		"user={:user} && collection={:collection}",
+		"",
+		10000,
+		0,
+		dbx.Params{"user": userId, "collection": collectionId},
+	)
+	if err != nil {
+		return 0
+	}
+	return len(records)
 }
 
 func updateListStatus(app core.App, listId, status, message string) error {

@@ -6,6 +6,9 @@ export type LeadList = {
   search_term: string
   location: string
   max_results: number
+  segment_icon?: string
+  segment_color?: string
+  segment_pinned: boolean
   status: LeadListStatus
   total_found: number
   error?: string
@@ -40,6 +43,9 @@ export function normalizeList(record: Partial<LeadList>): LeadList {
     search_term: String(record.search_term ?? ''),
     location: String(record.location ?? ''),
     max_results: Number(record.max_results ?? 30),
+    segment_icon: record.segment_icon ? String(record.segment_icon) : undefined,
+    segment_color: record.segment_color ? String(record.segment_color) : undefined,
+    segment_pinned: Boolean(record.segment_pinned ?? false),
     status: (record.status ?? 'pending') as LeadListStatus,
     total_found: Number(record.total_found ?? 0),
     error: record.error,

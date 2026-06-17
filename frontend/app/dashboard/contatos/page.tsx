@@ -7,7 +7,6 @@ import {
   FilterX,
   Globe2,
   Layers3,
-  MapPin,
   Phone,
   Search,
   Star,
@@ -124,7 +123,6 @@ export default function ContactsPage() {
   const [query, setQuery] = React.useState('')
   const [segmentFilter, setSegmentFilter] = React.useState(ALL_FILTER_VALUE)
   const [locationFilter, setLocationFilter] = React.useState(ALL_FILTER_VALUE)
-  const [listFilter, setListFilter] = React.useState(ALL_FILTER_VALUE)
   const [qualityFilter, setQualityFilter] = React.useState<ContactQualityFilter>('all')
   const [loading, setLoading] = React.useState(true)
 
@@ -194,19 +192,13 @@ export default function ContactsPage() {
       if (normalizedQuery && !haystack.includes(normalizedQuery)) return false
       if (segmentFilter !== ALL_FILTER_VALUE && segmentKey(list) !== segmentFilter) return false
       if (locationFilter !== ALL_FILTER_VALUE && list?.location !== locationFilter) return false
-      if (listFilter !== ALL_FILTER_VALUE && contact.list !== listFilter) return false
       if (qualityFilter === 'phone' && !contact.phone) return false
       if (qualityFilter === 'website' && !contact.website) return false
       if (qualityFilter === 'high-rating' && !hasHighRating(contact)) return false
 
       return true
     })
-  }, [contacts, listsById, query, segmentFilter, locationFilter, listFilter, qualityFilter])
-
-  const filteredSegments = React.useMemo(
-    () => buildSegments(filteredContacts, listsById).slice(0, 6),
-    [filteredContacts, listsById],
-  )
+  }, [contacts, listsById, query, segmentFilter, locationFilter, qualityFilter])
 
   const contactsWithPhone = contacts.filter((contact) => Boolean(contact.phone)).length
   const contactsWithWebsite = contacts.filter((contact) => Boolean(contact.website)).length
@@ -215,14 +207,12 @@ export default function ContactsPage() {
     query ||
     segmentFilter !== ALL_FILTER_VALUE ||
     locationFilter !== ALL_FILTER_VALUE ||
-    listFilter !== ALL_FILTER_VALUE ||
     qualityFilter !== 'all'
 
   function resetFilters() {
     setQuery('')
     setSegmentFilter(ALL_FILTER_VALUE)
     setLocationFilter(ALL_FILTER_VALUE)
-    setListFilter(ALL_FILTER_VALUE)
     setQualityFilter('all')
   }
 
@@ -237,11 +227,35 @@ export default function ContactsPage() {
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-4">
-          <ContactMetricCard title="Contatos" value={contacts.length} icon={Layers3} loading={loading} />
-          <ContactMetricCard title="Com telefone" value={contactsWithPhone} icon={Phone} loading={loading} />
-          <ContactMetricCard title="Com site" value={contactsWithWebsite} icon={Globe2} loading={loading} />
-          <ContactMetricCard title="Notas altas" value={strongContacts} icon={Star} loading={loading} />
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <ContactMetricCard
+            title="Contatos"
+            value={contacts.length}
+            icon={Layers3}
+            loading={loading}
+            tone="blue"
+          />
+          <ContactMetricCard
+            title="Com telefone"
+            value={contactsWithPhone}
+            icon={Phone}
+            loading={loading}
+            tone="green"
+          />
+          <ContactMetricCard
+            title="Com site"
+            value={contactsWithWebsite}
+            icon={Globe2}
+            loading={loading}
+            tone="violet"
+          />
+          <ContactMetricCard
+            title="Notas altas"
+            value={strongContacts}
+            icon={Star}
+            loading={loading}
+            tone="amber"
+          />
         </div>
 
         <Card className="min-w-0 overflow-hidden">
@@ -262,7 +276,7 @@ export default function ContactsPage() {
               ) : null}
             </div>
 
-            <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_180px_180px_180px_160px]">
+            <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_180px_180px_160px]">
               <div className="relative min-w-0">
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -305,22 +319,6 @@ export default function ContactsPage() {
                 </SelectContent>
               </Select>
 
-              <Select value={listFilter} onValueChange={setListFilter}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Lista" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value={ALL_FILTER_VALUE}>Todas as listas</SelectItem>
-                    {lists.map((list) => (
-                      <SelectItem key={list.id} value={list.id}>
-                        {list.name || list.search_term}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-
               <Select
                 value={qualityFilter}
                 onValueChange={(value) => setQualityFilter(value as ContactQualityFilter)}
@@ -348,90 +346,78 @@ export default function ContactsPage() {
                 <Skeleton className="h-16 w-full" />
               </div>
             ) : filteredContacts.length ? (
-              <>
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {filteredSegments.map((segment) => (
-                    <SegmentSummaryCard
-                      key={segment.key}
-                      segment={segment}
-                      onSelect={() => setSegmentFilter(segment.key)}
-                    />
-                  ))}
-                </div>
+              <div className="min-w-0 overflow-hidden rounded-xl border">
+                <Table className="min-w-[980px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[32%] px-4">Nome</TableHead>
+                      <TableHead>Segmento</TableHead>
+                      <TableHead>Localidade</TableHead>
+                      <TableHead>Telefone</TableHead>
+                      <TableHead>Avaliação</TableHead>
+                      <TableHead className="text-right">Link</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredContacts.map((contact) => {
+                      const list = listsById[contact.list]
 
-                <div className="min-w-0 overflow-hidden rounded-xl border">
-                  <Table className="min-w-[980px]">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[32%] px-4">Nome</TableHead>
-                        <TableHead>Segmento</TableHead>
-                        <TableHead>Localidade</TableHead>
-                        <TableHead>Telefone</TableHead>
-                        <TableHead>Avaliação</TableHead>
-                        <TableHead className="text-right">Link</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredContacts.map((contact) => {
-                        const list = listsById[contact.list]
-
-                        return (
-                          <TableRow key={contact.id}>
-                            <TableCell className="max-w-[320px] px-4">
-                              <div className="min-w-0">
-                                <p className="truncate font-medium">{contact.name}</p>
-                                <p className="truncate text-xs text-muted-foreground">
-                                  {contact.category || contact.address || 'Sem categoria'}
-                                </p>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              {list ? (
-                                <Link
-                                  href={`/dashboard/listas/${contact.list}`}
-                                  className="inline-flex max-w-[220px] truncate hover:underline"
-                                >
-                                  {segmentTitle(list)}
-                                </Link>
-                              ) : (
-                                'Lista'
-                              )}
-                            </TableCell>
-                            <TableCell className="max-w-[180px] truncate">
-                              {list?.location || '-'}
-                            </TableCell>
-                            <TableCell>{contact.phone || '-'}</TableCell>
-                            <TableCell>
-                              {contact.rating ? (
-                                <Badge variant={hasHighRating(contact) ? 'default' : 'outline'}>
-                                  {contact.rating}
-                                </Badge>
-                              ) : (
-                                '-'
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {contact.place_url ? (
-                                <a
-                                  href={contact.place_url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center justify-end gap-2 hover:underline"
-                                >
-                                  Maps
-                                  <ExternalLink className="size-4" />
-                                </a>
-                              ) : (
-                                '-'
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-              </>
+                      return (
+                        <TableRow key={contact.id}>
+                          <TableCell className="max-w-[320px] px-4">
+                            <div className="min-w-0">
+                              <p className="truncate font-medium">{contact.name}</p>
+                              <p className="truncate text-xs text-muted-foreground">
+                                {contact.category || contact.address || 'Sem categoria'}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {list ? (
+                              <Link
+                                href={`/dashboard/listas/${contact.list}`}
+                                className="inline-flex max-w-[220px] truncate hover:underline"
+                              >
+                                {segmentTitle(list)}
+                              </Link>
+                            ) : (
+                              'Lista'
+                            )}
+                          </TableCell>
+                          <TableCell className="max-w-[180px] truncate">
+                            {list?.location || '-'}
+                          </TableCell>
+                          <TableCell>{contact.phone || '-'}</TableCell>
+                          <TableCell>
+                            {contact.rating ? (
+                              <Badge variant={hasHighRating(contact) ? 'default' : 'outline'}>
+                                {contact.rating}
+                              </Badge>
+                            ) : (
+                              '-'
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {contact.place_url ? (
+                              <a
+                                href={contact.place_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center justify-end gap-2 hover:underline"
+                              >
+                                Maps
+                                <ExternalLink className="size-4" />
+                              </a>
+                            ) : (
+                              '-'
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
             ) : (
               <Empty className="min-h-72 border">
                 <EmptyHeader>
@@ -457,66 +443,63 @@ function ContactMetricCard({
   value,
   icon: Icon,
   loading,
+  tone,
 }: {
   title: string
   value: number
   icon: React.ElementType
   loading: boolean
+  tone: 'blue' | 'green' | 'violet' | 'amber'
 }) {
+  const toneClasses = {
+    blue: {
+      icon: 'bg-primary/10 text-primary',
+      glow: 'from-primary/18',
+    },
+    green: {
+      icon: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+      glow: 'from-emerald-500/18',
+    },
+    violet: {
+      icon: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
+      glow: 'from-violet-500/18',
+    },
+    amber: {
+      icon: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+      glow: 'from-amber-500/18',
+    },
+  }[tone]
+
   return (
-    <Card className="min-w-0">
-      <CardContent className="flex items-center justify-between gap-3 p-4">
-        <div className="min-w-0">
-          <p className="text-sm text-muted-foreground">{title}</p>
+    <div className="relative min-w-0 overflow-hidden rounded-3xl border bg-card p-3.5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-4">
+      <div
+        className={cn(
+          'absolute inset-x-0 top-0 h-16 bg-linear-to-b to-transparent',
+          toneClasses.glow,
+        )}
+      />
+      <div className="relative flex min-h-16 items-center justify-between gap-2.5">
+        <div className="flex min-w-0 flex-col gap-1">
+          <p className="text-xs font-medium text-muted-foreground sm:text-sm">
+            {title}
+          </p>
           {loading ? (
-            <Skeleton className="mt-2 h-7 w-16" />
+            <Skeleton className="h-7 w-14" />
           ) : (
-            <p className="text-2xl font-semibold tracking-tight">
+            <p className="text-2xl font-semibold tracking-tight sm:text-3xl">
               {value.toLocaleString('pt-BR')}
             </p>
           )}
         </div>
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground">
+        <span
+          className={cn(
+            'flex size-12 shrink-0 items-center justify-center rounded-2xl',
+            toneClasses.icon,
+          )}
+        >
           <Icon className="size-5" />
         </span>
-      </CardContent>
-    </Card>
-  )
-}
-
-function SegmentSummaryCard({
-  segment,
-  onSelect,
-}: {
-  segment: ContactSegment
-  onSelect: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={cn(
-        'flex min-w-0 flex-col gap-3 rounded-xl border bg-background/70 p-4 text-left',
-        'transition hover:border-primary/35 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate font-medium">{segment.title}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {segment.lists.length} {segment.lists.length === 1 ? 'lista' : 'listas'} em{' '}
-            {segment.locations.length || 1}{' '}
-            {segment.locations.length === 1 ? 'localidade' : 'localidades'}
-          </p>
-        </div>
-        <Badge variant="secondary">{segment.contacts.length}</Badge>
       </div>
-      <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-        <MapPin className="size-4 shrink-0" />
-        <span className="truncate">
-          {segment.locations.slice(0, 3).join(', ') || 'Sem localidade'}
-        </span>
-      </div>
-    </button>
+    </div>
   )
 }

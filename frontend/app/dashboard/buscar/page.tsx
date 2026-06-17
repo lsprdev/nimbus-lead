@@ -1,33 +1,45 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
-  ArrowRight,
+  BriefcaseBusiness,
   Check,
   CheckCircle2,
-  ChevronDown,
   ChevronsUpDown,
+  Coffee,
+  Dumbbell,
+  HeartPulse,
   ListChecks,
   Loader2,
-  Map as MapIcon,
-  MapPin,
+  MoreVertical,
+  Pencil,
+  Pin,
+  PinOff,
   Plus,
   Search,
+  ShoppingBag,
   Smartphone,
+  Store,
+  Trash2,
   UsersRound,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import {
   Command,
   CommandEmpty,
@@ -45,6 +57,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -83,6 +101,65 @@ const KEYWORD_SUGGESTIONS = [
   "marcenarias",
 ];
 
+const DEFAULT_SEGMENT_ICON = "smartphone";
+const DEFAULT_SEGMENT_COLOR = "blue";
+
+const SEGMENT_ICON_OPTIONS = [
+  { value: "smartphone", label: "Geral", icon: Smartphone },
+  { value: "store", label: "Loja", icon: Store },
+  { value: "coffee", label: "Alimentação", icon: Coffee },
+  { value: "heart", label: "Saúde", icon: HeartPulse },
+  { value: "bag", label: "Varejo", icon: ShoppingBag },
+  { value: "business", label: "Serviços", icon: BriefcaseBusiness },
+  { value: "fitness", label: "Fitness", icon: Dumbbell },
+] as const;
+
+const SEGMENT_COLOR_OPTIONS = [
+  {
+    value: "blue",
+    label: "Azul",
+    swatch: "bg-blue-500",
+    icon: "border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-500/25 dark:bg-blue-500/10 dark:text-blue-400",
+  },
+  {
+    value: "emerald",
+    label: "Verde",
+    swatch: "bg-emerald-500",
+    icon: "border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-400",
+  },
+  {
+    value: "amber",
+    label: "Âmbar",
+    swatch: "bg-amber-500",
+    icon: "border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-400",
+  },
+  {
+    value: "rose",
+    label: "Rosa",
+    swatch: "bg-rose-500",
+    icon: "border-rose-200 bg-rose-50 text-rose-600 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-400",
+  },
+  {
+    value: "violet",
+    label: "Violeta",
+    swatch: "bg-violet-500",
+    icon: "border-violet-200 bg-violet-50 text-violet-600 dark:border-violet-500/25 dark:bg-violet-500/10 dark:text-violet-400",
+  },
+  {
+    value: "slate",
+    label: "Cinza",
+    swatch: "bg-slate-500",
+    icon: "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-500/25 dark:bg-slate-500/10 dark:text-slate-400",
+  },
+] as const;
+
+type SegmentIconValue = (typeof SEGMENT_ICON_OPTIONS)[number]["value"];
+type SegmentColorValue = (typeof SEGMENT_COLOR_OPTIONS)[number]["value"];
+type SegmentVisual = {
+  icon: SegmentIconValue;
+  color: SegmentColorValue;
+};
+
 type IbgeMunicipality = {
   id: number;
   nome: string;
@@ -110,8 +187,43 @@ type LeadListGroup = {
   completedCount: number;
   activeCount: number;
   locations: string[];
+  segmentIcon: SegmentIconValue;
+  segmentColor: SegmentColorValue;
+  pinned: boolean;
   updated: string;
 };
+
+function getSegmentIconOption(value?: string) {
+  return (
+    SEGMENT_ICON_OPTIONS.find((option) => option.value === value) ??
+    SEGMENT_ICON_OPTIONS[0]
+  );
+}
+
+function getSegmentColorOption(value?: string) {
+  return (
+    SEGMENT_COLOR_OPTIONS.find((option) => option.value === value) ??
+    SEGMENT_COLOR_OPTIONS[0]
+  );
+}
+
+function segmentKeyFromList(list: LeadList) {
+  return normalizeSearchValue(list.search_term || list.name || "sem-segmento");
+}
+
+function applySegmentVisualOverride(
+  list: LeadList,
+  overrides: Record<string, SegmentVisual>,
+) {
+  const override = overrides[segmentKeyFromList(list)];
+  if (!override) return list;
+
+  return {
+    ...list,
+    segment_icon: override.icon,
+    segment_color: override.color,
+  };
+}
 
 function normalizeSearchValue(value: string) {
   return value
@@ -131,9 +243,7 @@ function groupLeadLists(lists: LeadList[]): LeadListGroup[] {
   const groups = new Map<string, LeadList[]>();
 
   lists.forEach((list) => {
-    const key = normalizeSearchValue(
-      list.search_term || list.name || "sem-segmento",
-    );
+    const key = segmentKeyFromList(list);
     groups.set(key, [...(groups.get(key) ?? []), list]);
   });
 
@@ -161,6 +271,10 @@ function groupLeadLists(lists: LeadList[]): LeadListGroup[] {
       const locations = Array.from(
         new Set(orderedLists.map((list) => list.location).filter(Boolean)),
       );
+      const visualList =
+        orderedLists.find((list) => list.segment_icon || list.segment_color) ??
+        orderedLists[0];
+      const pinned = orderedLists.some((list) => list.segment_pinned);
 
       return {
         key,
@@ -174,10 +288,16 @@ function groupLeadLists(lists: LeadList[]): LeadListGroup[] {
         completedCount,
         activeCount,
         locations,
+        segmentIcon: getSegmentIconOption(visualList?.segment_icon).value,
+        segmentColor: getSegmentColorOption(visualList?.segment_color).value,
+        pinned,
         updated: orderedLists[0]?.updated || orderedLists[0]?.created || "",
       };
     })
-    .sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated));
+    .sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      return Date.parse(b.updated) - Date.parse(a.updated);
+    });
 }
 
 function buildSegmentHref(group: LeadListGroup) {
@@ -196,11 +316,28 @@ export default function SearchPage() {
   const [creating, setCreating] = React.useState(false);
   const [createDialogOpen, setCreateDialogOpen] = React.useState(false);
   const [createDialogMode, setCreateDialogMode] = React.useState<
-    "new" | "segment"
+    "new" | "segment" | "edit"
   >("new");
-  const [listName, setListName] = React.useState("");
+  const [editingSegment, setEditingSegment] =
+    React.useState<LeadListGroup | null>(null);
   const [searchTerm, setSearchTerm] = React.useState("");
   const [location, setLocation] = React.useState("");
+  const [segmentIcon, setSegmentIcon] = React.useState<SegmentIconValue>(
+    DEFAULT_SEGMENT_ICON,
+  );
+  const [segmentColor, setSegmentColor] = React.useState<SegmentColorValue>(
+    DEFAULT_SEGMENT_COLOR,
+  );
+  const [segmentPinned, setSegmentPinned] = React.useState(false);
+  const [segmentVisualOverrides, setSegmentVisualOverrides] = React.useState<
+    Record<string, SegmentVisual>
+  >({});
+  const [pinningSegmentKey, setPinningSegmentKey] = React.useState<string | null>(
+    null,
+  );
+  const [deletingSegmentKey, setDeletingSegmentKey] = React.useState<string | null>(
+    null,
+  );
   const [cityOptions, setCityOptions] = React.useState<ComboboxOption[]>([]);
   const [loadingCities, setLoadingCities] = React.useState(false);
   const [citiesLoaded, setCitiesLoaded] = React.useState(false);
@@ -231,7 +368,15 @@ export default function SearchPage() {
         throw new Error("Não foi possível carregar suas listas.");
       }
 
-      setLists(Array.isArray(payload) ? payload.map(normalizeList) : []);
+      setLists(
+        Array.isArray(payload)
+          ? payload
+              .map(normalizeList)
+              .map((list) =>
+                applySegmentVisualOverride(list, segmentVisualOverrides),
+              )
+          : [],
+      );
     } catch (error) {
       if (!options?.silent) {
         toast.error(
@@ -243,7 +388,7 @@ export default function SearchPage() {
         setLoadingLists(false);
       }
     }
-  }, [authFetch]);
+  }, [authFetch, segmentVisualOverrides]);
 
   React.useEffect(() => {
     void loadLists();
@@ -304,16 +449,99 @@ export default function SearchPage() {
     setCreating(true);
 
     const formData = new FormData(form);
-    const name = String(formData.get("name") ?? "");
     const currentSearchTerm = String(formData.get("searchTerm") ?? "").trim();
     const currentLocation = String(formData.get("location") ?? "").trim();
     const maxResults = Number(formData.get("maxResults") ?? 30);
 
     if (!currentSearchTerm) {
-      toast.error("Informe uma palavra-chave para criar a lista.");
+      toast.error("Informe um segmento para iniciar a busca.");
       setCreating(false);
       return;
     }
+
+    if (createDialogMode === "edit") {
+      if (!editingSegment) {
+        toast.error("Não foi possível encontrar o segmento para editar.");
+        setCreating(false);
+        return;
+      }
+
+      const visual: SegmentVisual = {
+        icon: segmentIcon,
+        color: segmentColor,
+      };
+      const nextTitle = formatSegmentTitle(currentSearchTerm);
+      const nextKey = normalizeSearchValue(currentSearchTerm);
+
+      try {
+        const responses = await Promise.all(
+          editingSegment.lists.map((list) =>
+            authFetch(`/api/collections/lead_lists/records/${list.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                search_term: currentSearchTerm,
+                name: list.location
+                  ? `${nextTitle} em ${list.location}`
+                  : nextTitle,
+                segment_icon: visual.icon,
+                segment_color: visual.color,
+              }),
+            }),
+          ),
+        );
+        const failedResponse = responses.find((response) => !response.ok);
+        if (failedResponse) {
+          const payload = await failedResponse.json().catch(() => null);
+          throw new Error(
+            payload?.message ?? "Não foi possível editar o segmento.",
+          );
+        }
+
+        const editedIds = new Set(editingSegment.lists.map((list) => list.id));
+        setLists((currentLists) =>
+          currentLists.map((list) =>
+            editedIds.has(list.id)
+              ? {
+                  ...list,
+                  name: list.location
+                    ? `${nextTitle} em ${list.location}`
+                    : nextTitle,
+                  search_term: currentSearchTerm,
+                  segment_icon: visual.icon,
+                  segment_color: visual.color,
+                }
+              : list,
+          ),
+        );
+        setSegmentVisualOverrides((currentOverrides) => {
+          const nextOverrides = { ...currentOverrides };
+          delete nextOverrides[editingSegment.key];
+          nextOverrides[nextKey] = visual;
+          return nextOverrides;
+        });
+        toast.success("Segmento atualizado.");
+        setCreateDialogOpen(false);
+        setEditingSegment(null);
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Erro ao editar segmento.",
+        );
+      } finally {
+        setCreating(false);
+      }
+      return;
+    }
+
+    if (!currentLocation) {
+      toast.error("Informe uma localização para iniciar a busca.");
+      setCreating(false);
+      return;
+    }
+
+    const name = currentLocation
+      ? `${formatSegmentTitle(currentSearchTerm)} em ${currentLocation}`
+      : formatSegmentTitle(currentSearchTerm);
 
     try {
       const response = await authFetch("/api/lead-lists", {
@@ -324,22 +552,53 @@ export default function SearchPage() {
           searchTerm: currentSearchTerm,
           location: currentLocation,
           maxResults,
+          segmentIcon,
+          segmentColor,
+          segmentPinned,
         }),
       });
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
-        throw new Error(payload?.message ?? "Não foi possível criar a lista.");
+        throw new Error(payload?.message ?? "Não foi possível criar o segmento.");
       }
 
-      const list = normalizeList(payload);
+      const visual: SegmentVisual = {
+        icon: segmentIcon,
+        color: segmentColor,
+      };
+      const segmentKey = normalizeSearchValue(currentSearchTerm);
+      const list = normalizeList({
+        ...(payload ?? {}),
+        segment_icon: payload?.segment_icon ?? visual.icon,
+        segment_color: payload?.segment_color ?? visual.color,
+        segment_pinned: payload?.segment_pinned ?? segmentPinned,
+      });
+      setSegmentVisualOverrides((currentOverrides) => ({
+        ...currentOverrides,
+        [segmentKey]: visual,
+      }));
       setLists((currentLists) => [
         list,
-        ...currentLists.filter((currentList) => currentList.id !== list.id),
+        ...currentLists
+          .filter((currentList) => currentList.id !== list.id)
+          .map((currentList) =>
+            segmentKeyFromList(currentList) === segmentKey
+              ? {
+                  ...currentList,
+                  segment_icon: visual.icon,
+                  segment_color: visual.color,
+                  segment_pinned: segmentPinned,
+                }
+              : currentList,
+          ),
       ]);
-      toast.success("Lista criada. A busca foi iniciada.");
+      toast.success(
+        createDialogMode === "segment"
+          ? "Local adicionado. A busca foi iniciada."
+          : "Segmento criado. A busca foi iniciada.",
+      );
       setCreateDialogOpen(false);
-      setListName("");
       setSearchTerm("");
       setLocation("");
       form.reset();
@@ -354,17 +613,104 @@ export default function SearchPage() {
 
   function resetCreateForm() {
     setCreateDialogMode("new");
-    setListName("");
+    setEditingSegment(null);
     setSearchTerm("");
     setLocation("");
+    setSegmentIcon(DEFAULT_SEGMENT_ICON);
+    setSegmentColor(DEFAULT_SEGMENT_COLOR);
+    setSegmentPinned(false);
   }
 
   function openSegmentSearch(group: LeadListGroup) {
     setCreateDialogMode("segment");
-    setListName(group.title);
+    setEditingSegment(null);
     setSearchTerm(group.searchTerm);
     setLocation("");
+    setSegmentIcon(group.segmentIcon);
+    setSegmentColor(group.segmentColor);
+    setSegmentPinned(group.pinned);
     setCreateDialogOpen(true);
+  }
+
+  function openEditSegment(group: LeadListGroup) {
+    setCreateDialogMode("edit");
+    setEditingSegment(group);
+    setSearchTerm(group.searchTerm);
+    setLocation("");
+    setSegmentIcon(group.segmentIcon);
+    setSegmentColor(group.segmentColor);
+    setSegmentPinned(group.pinned);
+    setCreateDialogOpen(true);
+  }
+
+  async function handleToggleSegmentPin(group: LeadListGroup) {
+    const nextPinned = !group.pinned;
+    setPinningSegmentKey(group.key);
+    try {
+      const response = await authFetch("/api/lead-segments/pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          listIds: group.lists.map((list) => list.id),
+          pinned: nextPinned,
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          payload?.message ?? "Não foi possível atualizar o segmento.",
+        );
+      }
+
+      setLists((currentLists) =>
+        currentLists.map((list) =>
+          segmentKeyFromList(list) === group.key
+            ? { ...list, segment_pinned: nextPinned }
+            : list,
+        ),
+      );
+      toast.success(nextPinned ? "Segmento fixado." : "Segmento desfixado.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Erro ao atualizar segmento.",
+      );
+    } finally {
+      setPinningSegmentKey(null);
+    }
+  }
+
+  async function handleDeleteSegment(group: LeadListGroup) {
+    setDeletingSegmentKey(group.key);
+    try {
+      const responses = await Promise.all(
+        group.lists.map((list) =>
+          authFetch(`/api/lead-lists/${list.id}`, { method: "DELETE" }),
+        ),
+      );
+      const failedResponse = responses.find((response) => !response.ok);
+      if (failedResponse) {
+        const payload = await failedResponse.json().catch(() => null);
+        throw new Error(payload?.message ?? "Não foi possível excluir o segmento.");
+      }
+
+      const deletedIds = new Set(group.lists.map((list) => list.id));
+      setLists((currentLists) =>
+        currentLists.filter((list) => !deletedIds.has(list.id)),
+      );
+      setSegmentVisualOverrides((currentOverrides) => {
+        const nextOverrides = { ...currentOverrides };
+        delete nextOverrides[group.key];
+        return nextOverrides;
+      });
+      toast.success("Segmento excluído.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Erro ao excluir segmento.",
+      );
+    } finally {
+      setDeletingSegmentKey(null);
+    }
   }
 
   return (
@@ -386,7 +732,15 @@ export default function SearchPage() {
               </div>
             </div>
 
-            <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+            <Dialog
+              open={createDialogOpen}
+              onOpenChange={(open) => {
+                setCreateDialogOpen(open);
+                if (!open) {
+                  setEditingSegment(null);
+                }
+              }}
+            >
               <DialogTrigger asChild>
                 <Button
                   size="default"
@@ -394,39 +748,30 @@ export default function SearchPage() {
                   onClick={resetCreateForm}
                 >
                   <Plus className="size-4" />
-                  Nova lista
+                  Novo segmento
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="sm:max-w-3xl">
                 <DialogHeader>
                   <DialogTitle>
-                    {createDialogMode === "segment"
-                      ? `Novo local para ${listName}`
-                      : "Nova lista"}
+                    {createDialogMode === "edit"
+                      ? `Editar ${editingSegment?.title ?? "segmento"}`
+                      : createDialogMode === "segment"
+                        ? `Novo local para ${formatSegmentTitle(searchTerm)}`
+                        : "Novo segmento"}
                   </DialogTitle>
                   <DialogDescription>
-                    {createDialogMode === "segment"
-                      ? "A palavra-chave já está preenchida. Escolha outra localidade para ampliar este segmento."
-                      : "Defina o termo e a localização para iniciar uma busca em segundo plano."}
+                    {createDialogMode === "edit"
+                      ? "Atualize o nome, o ícone e a cor usados para este segmento."
+                      : createDialogMode === "segment"
+                        ? "O segmento já está preenchido. Escolha outra localidade para ampliar este mapa."
+                        : "Defina o segmento e a localização para iniciar uma busca em segundo plano."}
                   </DialogDescription>
                 </DialogHeader>
                 <form id="create-list-form" onSubmit={handleCreateList}>
                   <FieldGroup className="gap-4">
                     <Field>
-                      <FieldLabel htmlFor="name">Nome da lista</FieldLabel>
-                      <Input
-                        id="name"
-                        name="name"
-                        value={listName}
-                        onChange={(event) => setListName(event.target.value)}
-                        placeholder="Restaurantes em São Paulo"
-                        required
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor="searchTerm">
-                        Palavra-chave
-                      </FieldLabel>
+                      <FieldLabel htmlFor="searchTerm">Segmento</FieldLabel>
                       <SuggestionCombobox
                         id="searchTerm"
                         name="searchTerm"
@@ -436,47 +781,111 @@ export default function SearchPage() {
                           value: keyword,
                           label: keyword,
                         }))}
-                        placeholder="restaurantes japoneses"
-                        searchPlaceholder="Buscar ou escrever palavra-chave..."
-                        emptyLabel="Digite para usar uma palavra-chave própria."
-                        customLabel="Usar palavra-chave"
+                        placeholder="Restaurantes japoneses"
+                        searchPlaceholder="Buscar ou escrever segmento..."
+                        emptyLabel="Digite para usar um segmento próprio."
+                        customLabel="Usar segmento"
                       />
                     </Field>
-                    <div className="grid gap-4 sm:grid-cols-[1fr_160px]">
-                      <Field>
-                        <FieldLabel htmlFor="location">Localização</FieldLabel>
-                        <SuggestionCombobox
-                          id="location"
-                          name="location"
-                          value={location}
-                          onValueChange={setLocation}
-                          options={cityOptions}
-                          placeholder="São Paulo, SP"
-                          searchPlaceholder="Buscar cidade..."
-                          emptyLabel={
-                            loadingCities
-                              ? "Carregando cidades..."
-                              : "Digite para usar uma localização própria."
-                          }
-                          customLabel="Usar localização"
-                          loading={loadingCities}
-                          onOpen={loadCities}
-                        />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="maxResults">Quantidade</FieldLabel>
-                        <Input
-                          id="maxResults"
-                          name="maxResults"
-                          type="number"
-                          min={1}
-                          max={500}
-                          step={1}
-                          defaultValue={30}
-                          required
-                        />
-                      </Field>
-                    </div>
+                    {createDialogMode !== "segment" ? (
+                      <div className="grid gap-4 sm:grid-cols-[minmax(0,420px)_1fr]">
+                        <Field>
+                          <FieldLabel>Ícone</FieldLabel>
+                          <div className="flex flex-wrap gap-2">
+                            {SEGMENT_ICON_OPTIONS.map((option) => {
+                              const Icon = option.icon;
+                              const isSelected = segmentIcon === option.value;
+
+                              return (
+                                <button
+                                  key={option.value}
+                                  type="button"
+                                  aria-label={option.label}
+                                  aria-pressed={isSelected}
+                                  title={option.label}
+                                  className={cn(
+                                    "flex size-10 items-center justify-center rounded-xl border bg-background text-muted-foreground shadow-xs transition hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                    isSelected &&
+                                      "border-primary bg-primary/10 text-primary ring-2 ring-primary/20",
+                                  )}
+                                  onClick={() => setSegmentIcon(option.value)}
+                                >
+                                  <Icon className="size-4" />
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </Field>
+                        <Field>
+                          <FieldLabel>Cor</FieldLabel>
+                          <div className="flex flex-wrap gap-2">
+                            {SEGMENT_COLOR_OPTIONS.map((option) => {
+                              const isSelected = segmentColor === option.value;
+
+                              return (
+                                <button
+                                  key={option.value}
+                                  type="button"
+                                  aria-label={option.label}
+                                  aria-pressed={isSelected}
+                                  title={option.label}
+                                  className={cn(
+                                    "flex size-10 items-center justify-center rounded-xl border bg-background shadow-xs transition hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                    isSelected &&
+                                      "border-primary ring-2 ring-primary/20",
+                                  )}
+                                  onClick={() => setSegmentColor(option.value)}
+                                >
+                                  <span
+                                    className={cn(
+                                      "size-5 rounded-full",
+                                      option.swatch,
+                                    )}
+                                  />
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </Field>
+                      </div>
+                    ) : null}
+                    {createDialogMode !== "edit" ? (
+                      <div className="grid gap-4 sm:grid-cols-[1fr_160px]">
+                        <Field>
+                          <FieldLabel htmlFor="location">Localização</FieldLabel>
+                          <SuggestionCombobox
+                            id="location"
+                            name="location"
+                            value={location}
+                            onValueChange={setLocation}
+                            options={cityOptions}
+                            placeholder="Selecione uma cidade"
+                            searchPlaceholder="Buscar cidade..."
+                            emptyLabel={
+                              loadingCities
+                                ? "Carregando cidades..."
+                                : "Digite para usar uma localização própria."
+                            }
+                            customLabel="Usar localização"
+                            loading={loadingCities}
+                            onOpen={loadCities}
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="maxResults">Quantidade</FieldLabel>
+                          <Input
+                            id="maxResults"
+                            name="maxResults"
+                            type="number"
+                            min={1}
+                            max={500}
+                            step={1}
+                            defaultValue={30}
+                            required
+                          />
+                        </Field>
+                      </div>
+                    ) : null}
                   </FieldGroup>
                 </form>
                 <DialogFooter>
@@ -487,10 +896,16 @@ export default function SearchPage() {
                   >
                     {creating ? (
                       <Loader2 className="size-4 animate-spin" />
+                    ) : createDialogMode === "edit" ? (
+                      <Pencil className="size-4" />
                     ) : (
                       <Plus className="size-4" />
                     )}
-                    Criar lista
+                    {createDialogMode === "edit"
+                      ? "Salvar alterações"
+                      : createDialogMode === "segment"
+                        ? "Adicionar local"
+                        : "Criar segmento"}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -532,13 +947,6 @@ export default function SearchPage() {
                 Agrupe buscas do mesmo tema e acompanhe as cidades pesquisadas.
               </p>
             </div>
-            {!loadingLists && lists.length ? (
-              <span className="text-sm text-muted-foreground">
-                {groupedLists.length}{" "}
-                {groupedLists.length === 1 ? "segmento" : "segmentos"} em{" "}
-                {lists.length} {lists.length === 1 ? "busca" : "buscas"}
-              </span>
-            ) : null}
           </div>
 
           <div className="grid items-start gap-4 xl:grid-cols-2">
@@ -553,17 +961,24 @@ export default function SearchPage() {
                 <LeadListGroupCard
                   key={group.key}
                   group={group}
+                  deleting={deletingSegmentKey === group.key}
+                  pinning={pinningSegmentKey === group.key}
                   onAddLocation={() => openSegmentSearch(group)}
+                  onEditSegment={() => openEditSegment(group)}
+                  onDeleteSegment={() => handleDeleteSegment(group)}
+                  onTogglePin={() => handleToggleSegmentPin(group)}
                 />
               ))
             ) : (
-              <div className="flex min-h-56 flex-col items-center justify-center gap-3 rounded-2xl border border-dashed bg-card/40 text-center">
-                <span className="flex size-12 items-center justify-center rounded-xl bg-accent text-accent-foreground">
-                  <Search className="size-5" />
+              <div className="col-span-full mx-auto flex min-h-80 w-full max-w-5xl flex-col items-center justify-center gap-4 rounded-2xl border border-dashed bg-card/40 px-6 text-center">
+                <span className="flex size-16 items-center justify-center rounded-2xl bg-accent text-accent-foreground">
+                  <Search className="size-7" />
                 </span>
                 <div>
-                  <p className="font-medium">Nenhuma lista criada</p>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-xl font-semibold tracking-tight">
+                    Nenhuma lista criada
+                  </p>
+                  <p className="mt-2 text-base text-muted-foreground">
                     Crie sua primeira busca para começar a coletar contatos.
                   </p>
                 </div>
@@ -612,7 +1027,7 @@ function MetricCard({
           toneClasses.glow,
         )}
       />
-      <div className="relative flex items-start justify-between gap-2.5">
+      <div className="relative flex min-h-16 items-center justify-between gap-2.5">
         <div className="flex min-w-0 flex-col gap-1">
           <p className="text-xs font-medium text-muted-foreground sm:text-sm">
             {title}
@@ -627,11 +1042,11 @@ function MetricCard({
         </div>
         <span
           className={cn(
-            "flex size-10 shrink-0 items-center justify-center rounded-xl",
+            "flex size-12 shrink-0 items-center justify-center rounded-2xl",
             toneClasses.icon,
           )}
         >
-          <Icon className="size-4" />
+          <Icon className="size-5" />
         </span>
       </div>
     </div>
@@ -640,35 +1055,75 @@ function MetricCard({
 
 function LeadListGroupCard({
   group,
+  deleting,
+  pinning,
   onAddLocation,
+  onEditSegment,
+  onDeleteSegment,
+  onTogglePin,
 }: {
   group: LeadListGroup;
+  deleting: boolean;
+  pinning: boolean;
   onAddLocation: () => void;
+  onEditSegment: () => void;
+  onDeleteSegment: () => void;
+  onTogglePin: () => void;
 }) {
-  const [expanded, setExpanded] = React.useState(false);
+  const router = useRouter();
+  const SegmentIcon = getSegmentIconOption(group.segmentIcon).icon;
+  const segmentColor = getSegmentColorOption(group.segmentColor);
+  const PinIcon = group.pinned ? PinOff : Pin;
+  const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
   const locationText = group.locations.length
     ? `${group.locations.length} ${
         group.locations.length === 1 ? "localidade" : "localidades"
       }`
-    : "Sem localidade";
-  const hasHiddenLocations = group.lists.length > 3;
-  const visibleLists = group.lists.slice(0, 3);
+      : "Sem localidade";
+  const segmentHref = buildSegmentHref(group);
 
   return (
-    <Collapsible
-      open={expanded}
-      onOpenChange={setExpanded}
-      className="overflow-hidden rounded-2xl border bg-card shadow-sm transition hover:border-primary/25 hover:shadow-md"
+    <div
+      role="link"
+      tabIndex={0}
+      className={cn(
+        "cursor-pointer overflow-hidden rounded-2xl border bg-card shadow-sm transition hover:border-primary/25 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        group.pinned && "border-primary/35 bg-primary/[0.03] shadow-md",
+      )}
+      onClick={() => router.push(segmentHref)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          router.push(segmentHref);
+        }
+      }}
+      aria-label={`Ver mapa de ${group.title}`}
     >
       <div className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary shadow-xs">
-            <Smartphone className="size-5" strokeWidth={2.1} />
+          <span
+            className={cn(
+              "flex size-10 shrink-0 items-center justify-center rounded-xl border shadow-xs",
+              segmentColor.icon,
+            )}
+          >
+            <SegmentIcon className="size-5" strokeWidth={2.1} />
           </span>
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-            <p className="break-words text-lg font-semibold leading-tight tracking-tight">
-              {group.title}
-            </p>
+            <div className="flex min-w-0 items-start gap-2">
+              <p className="break-words text-lg font-semibold leading-tight tracking-tight">
+                {group.title}
+              </p>
+              {group.pinned ? (
+                <span
+                  className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
+                  title="Fixado"
+                  aria-label="Segmento fixado"
+                >
+                  <Pin className="size-3" />
+                </span>
+              ) : null}
+            </div>
             <Badge
               variant="secondary"
               className="w-fit rounded-full px-2.5 py-0.5 text-xs"
@@ -687,109 +1142,90 @@ function LeadListGroupCard({
           </p>
         </div>
 
-        <div className="flex flex-col gap-2 md:w-40">
-          <Button
-            asChild
-            variant="secondary"
-            size="sm"
-            className="justify-start gap-2 rounded-xl px-3"
-          >
-            <Link href={buildSegmentHref(group)}>
-              <MapIcon className="size-4" />
-              Ver mapa
-            </Link>
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="justify-start gap-2 rounded-xl px-3"
-            onClick={onAddLocation}
-          >
-            <Plus className="size-4" />
-            Adicionar local
-          </Button>
-        </div>
-      </div>
-
-      <div className="border-t bg-muted/15 p-3">
-        <div className="grid grid-cols-1 gap-2.5 xl:grid-cols-2">
-          {visibleLists.map((list) => (
-            <LeadListMiniCard key={list.id} list={list} />
-          ))}
-        </div>
-
-        {hasHiddenLocations ? (
-          <CollapsibleContent>
-            <div className="mt-2.5 grid grid-cols-1 gap-2.5 xl:grid-cols-2">
-              {group.lists.slice(3).map((list) => (
-                <LeadListMiniCard key={list.id} list={list} />
-              ))}
-            </div>
-          </CollapsibleContent>
-        ) : null}
-
-        {hasHiddenLocations ? (
-          <div className="mt-4 flex justify-center">
-            <CollapsibleTrigger asChild>
-              <Button type="button" variant="outline" size="sm" className="gap-2">
-                {expanded
-                  ? "Mostrar menos"
-                  : `Mostrar mais ${group.lists.length - 3}`}
-                <ChevronDown
-                  className={cn(
-                    "size-4 transition-transform",
-                    expanded && "rotate-180",
-                  )}
-                />
-              </Button>
-            </CollapsibleTrigger>
-          </div>
-        ) : null}
-      </div>
-    </Collapsible>
-  );
-}
-
-function LeadListMiniCard({ list }: { list: LeadList }) {
-  const isCompleted = list.status === "completed";
-  const contactsLabel =
-    list.total_found === 1
-      ? "1 contato"
-      : `${list.total_found.toLocaleString("pt-BR")} contatos`;
-
-  return (
-    <Link
-      href={`/dashboard/listas/${list.id}`}
-      className="group/location flex min-w-0 items-center justify-between gap-1.5 rounded-xl border bg-background p-2 shadow-xs transition hover:border-primary/35 hover:bg-card hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <div className="flex min-w-0 flex-1 items-center gap-1.5">
-        <span
-          className={cn(
-            "flex size-7 shrink-0 items-center justify-center rounded-lg",
-            isCompleted
-              ? "bg-emerald-500/10 text-emerald-600"
-              : "bg-primary/10 text-primary",
-          )}
+        <div
+          className="flex justify-end md:w-12"
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
         >
-          <MapPin className="size-3.5" />
-        </span>
-        <div className="min-w-0">
-          <p className="truncate text-[0.72rem] font-semibold tracking-tight">
-            {list.location || list.name || "Sem localidade"}
-          </p>
-          <p className="mt-0.5 truncate text-[0.66rem] text-muted-foreground">
-            {contactsLabel}
-          </p>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="rounded-xl"
+                disabled={deleting || pinning}
+                aria-label={`Abrir ações de ${group.title}`}
+              >
+                {deleting || pinning ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <MoreVertical className="size-4" />
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem onSelect={onAddLocation}>
+                <Plus className="size-4" />
+                Adicionar local
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onEditSegment}>
+                <Pencil className="size-4" />
+                Editar
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={pinning || deleting}
+                onSelect={onTogglePin}
+              >
+                <PinIcon className="size-4" />
+                {group.pinned ? "Soltar" : "Fixar"}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                variant="destructive"
+                disabled={deleting || pinning}
+                onSelect={() => setDeleteDialogOpen(true)}
+              >
+                <Trash2 className="size-4" />
+                Excluir
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <AlertDialog
+            open={deleteDialogOpen}
+            onOpenChange={setDeleteDialogOpen}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Excluir este segmento?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta ação remove todas as cidades e contatos encontrados em {group.title}. Buscas em andamento serão interrompidas.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={deleting}>
+                  Cancelar
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={deleting}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    onDeleteSegment();
+                  }}
+                >
+                  {deleting ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="size-4" />
+                  )}
+                  Excluir segmento
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
-
-      <div className="flex shrink-0 items-center gap-1">
-        <span className="flex size-6 items-center justify-center rounded-full border bg-card text-muted-foreground transition group-hover/location:border-primary group-hover/location:text-primary">
-          <ArrowRight className="size-3" />
-        </span>
-      </div>
-    </Link>
+    </div>
   );
 }
 

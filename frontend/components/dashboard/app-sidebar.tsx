@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 
 import { BrandLogo, BrandWordmark } from '@/components/brand'
+import { RadixBookmarkIcon } from '@/components/icons/radix-bookmark-icon'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   DropdownMenu,
@@ -37,6 +38,7 @@ import { getInitials, useAuth } from '@/lib/auth'
 const mainNav = [
   { title: 'Buscar', href: '/dashboard/buscar', icon: Search },
   { title: 'Contatos', href: '/dashboard/contatos', icon: ContactRound },
+  { title: 'Coleções', href: '/dashboard/colecoes', icon: RadixBookmarkIcon },
 ]
 
 export function AppSidebar() {
