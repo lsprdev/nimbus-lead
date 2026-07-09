@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   ExternalLink,
   Loader2,
+  MessageSquareText,
   MessageCircle,
   Phone,
   Search,
@@ -59,6 +60,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/lib/auth";
 import {
   hasCoordinates,
@@ -77,6 +79,8 @@ import { cn } from "@/lib/utils";
 const fallbackCenter: [number, number] = [-46.6333, -23.5505];
 const ALL_LOCATIONS_VALUE = "all";
 const NO_COLLECTION_VALUE = "__none__";
+const DEFAULT_WHATSAPP_MESSAGE = "Olá, tudo bem?";
+const WHATSAPP_MESSAGE_STORAGE_KEY = "leads-finder:whatsapp-message";
 
 type SegmentPayload = {
   lists?: Partial<LeadList>[];
@@ -90,14 +94,15 @@ function getGoogleMapsUrl(contact: Contact) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
-function getWhatsAppWebUrl(phone: string) {
+function getWhatsAppWebUrl(phone: string, messageText: string) {
   const digits = phone.replace(/\D/g, "");
   if (digits.length < 10) return null;
 
   const phoneWithCountryCode =
     digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
+  const message = encodeURIComponent(messageText.trim() || DEFAULT_WHATSAPP_MESSAGE);
 
-  return `https://web.whatsapp.com/send?phone=${phoneWithCountryCode}`;
+  return `https://web.whatsapp.com/send?phone=${phoneWithCountryCode}&text=${message}`;
 }
 
 function formatSegmentTitle(value: string) {
@@ -123,6 +128,11 @@ export default function LeadSegmentPage({
   const [selectedContactId, setSelectedContactId] = React.useState<string | null>(null);
   const [contactQuery, setContactQuery] = React.useState("");
   const [locationFilter, setLocationFilter] = React.useState(ALL_LOCATIONS_VALUE);
+  const [whatsAppMessage, setWhatsAppMessage] = React.useState(DEFAULT_WHATSAPP_MESSAGE);
+  const [draftWhatsAppMessage, setDraftWhatsAppMessage] =
+    React.useState(DEFAULT_WHATSAPP_MESSAGE);
+  const [whatsAppMessageDialogOpen, setWhatsAppMessageDialogOpen] =
+    React.useState(false);
   const [deletingLocation, setDeletingLocation] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [collections, setCollections] = React.useState<ContactCollection[]>([]);
@@ -210,6 +220,28 @@ export default function LeadSegmentPage({
   );
   const selectedLocationLabel =
     locationFilter === ALL_LOCATIONS_VALUE ? "" : locationFilter;
+
+  React.useEffect(() => {
+    const savedMessage = window.localStorage.getItem(WHATSAPP_MESSAGE_STORAGE_KEY);
+    if (!savedMessage) return;
+
+    setWhatsAppMessage(savedMessage);
+    setDraftWhatsAppMessage(savedMessage);
+  }, []);
+
+  function openWhatsAppMessageDialog() {
+    setDraftWhatsAppMessage(whatsAppMessage);
+    setWhatsAppMessageDialogOpen(true);
+  }
+
+  function handleSaveWhatsAppMessage() {
+    const nextMessage = draftWhatsAppMessage.trim() || DEFAULT_WHATSAPP_MESSAGE;
+    setWhatsAppMessage(nextMessage);
+    setDraftWhatsAppMessage(nextMessage);
+    window.localStorage.setItem(WHATSAPP_MESSAGE_STORAGE_KEY, nextMessage);
+    setWhatsAppMessageDialogOpen(false);
+    toast.success("Mensagem padrão salva.");
+  }
 
   const loadCollections = React.useCallback(async () => {
     setLoadingCollections(true);
@@ -559,10 +591,19 @@ export default function LeadSegmentPage({
                         </SelectItem>
                       ))}
                     </SelectGroup>
-                  </SelectContent>
-                </Select>
-                {locationFilter !== ALL_LOCATIONS_VALUE ? (
-                  <AlertDialog>
+	                  </SelectContent>
+	                </Select>
+	                <Button
+	                  type="button"
+	                  variant="outline"
+	                  className="h-11 gap-2 rounded-xl"
+	                  onClick={openWhatsAppMessageDialog}
+	                >
+	                  <MessageSquareText className="size-4" />
+	                  Mensagem padrão
+	                </Button>
+	                {locationFilter !== ALL_LOCATIONS_VALUE ? (
+	                  <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button
                         type="button"
@@ -643,6 +684,7 @@ export default function LeadSegmentPage({
                             isSelected={selectedContactId === contact.id}
                             isSavedToCollection={contactCollectionIds.has(contact.id)}
                             savedCollectionColor={getContactCollectionColor(contact.id)}
+                            whatsAppMessage={whatsAppMessage}
                             onSelect={() => selectContact(contact.id)}
                             onSaveToCollection={() => openCollectionDialog(contact)}
                             cardRef={(element) => {
@@ -795,10 +837,48 @@ export default function LeadSegmentPage({
               </Button>
             </DialogFooter>
           </DialogContent>
-        </Dialog>
-      </div>
-    </>
-  );
+	        </Dialog>
+	        <Dialog
+	          open={whatsAppMessageDialogOpen}
+	          onOpenChange={setWhatsAppMessageDialogOpen}
+	        >
+	          <DialogContent>
+	            <DialogHeader>
+	              <DialogTitle>Mensagem padrão</DialogTitle>
+	              <DialogDescription>
+	                Essa mensagem será colocada automaticamente ao abrir um contato no WhatsApp Web.
+	              </DialogDescription>
+	            </DialogHeader>
+	            <div className="flex flex-col gap-2">
+	              <Textarea
+	                value={draftWhatsAppMessage}
+	                onChange={(event) => setDraftWhatsAppMessage(event.target.value)}
+	                placeholder={DEFAULT_WHATSAPP_MESSAGE}
+	                className="min-h-32 resize-none"
+	                maxLength={500}
+	              />
+	              <p className="text-xs text-muted-foreground">
+	                {draftWhatsAppMessage.length}/500 caracteres
+	              </p>
+	            </div>
+	            <DialogFooter>
+	              <Button
+	                type="button"
+	                variant="outline"
+	                onClick={() => setWhatsAppMessageDialogOpen(false)}
+	              >
+	                Cancelar
+	              </Button>
+	              <Button type="button" onClick={handleSaveWhatsAppMessage}>
+	                <MessageSquareText className="size-4" />
+	                Salvar mensagem
+	              </Button>
+	            </DialogFooter>
+	          </DialogContent>
+	        </Dialog>
+	      </div>
+	    </>
+	  );
 }
 
 function EmptyContacts({
@@ -921,6 +1001,7 @@ function ContactCard({
   isSelected,
   isSavedToCollection,
   savedCollectionColor,
+  whatsAppMessage,
   onSelect,
   onSaveToCollection,
   cardRef,
@@ -929,11 +1010,14 @@ function ContactCard({
   isSelected: boolean;
   isSavedToCollection: boolean;
   savedCollectionColor: string;
+  whatsAppMessage: string;
   onSelect: () => void;
   onSaveToCollection: () => void;
   cardRef?: (element: HTMLDivElement | null) => void;
 }) {
-  const whatsAppUrl = contact.phone ? getWhatsAppWebUrl(contact.phone) : null;
+  const whatsAppUrl = contact.phone
+    ? getWhatsAppWebUrl(contact.phone, whatsAppMessage)
+    : null;
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (event.key === "Enter" || event.key === " ") {
