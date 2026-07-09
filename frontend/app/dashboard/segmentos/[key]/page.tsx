@@ -80,6 +80,7 @@ const fallbackCenter: [number, number] = [-46.6333, -23.5505];
 const ALL_LOCATIONS_VALUE = "all";
 const NO_COLLECTION_VALUE = "__none__";
 const DEFAULT_WHATSAPP_MESSAGE = "Olá, tudo bem?";
+const WHATSAPP_MESSAGE_MAX_LENGTH = 2000;
 const WHATSAPP_MESSAGE_STORAGE_KEY = "leads-finder:whatsapp-message";
 
 type SegmentPayload = {
@@ -855,10 +856,10 @@ export default function LeadSegmentPage({
 	                onChange={(event) => setDraftWhatsAppMessage(event.target.value)}
 	                placeholder={DEFAULT_WHATSAPP_MESSAGE}
 	                className="min-h-32 resize-none"
-	                maxLength={500}
+	                maxLength={WHATSAPP_MESSAGE_MAX_LENGTH}
 	              />
 	              <p className="text-xs text-muted-foreground">
-	                {draftWhatsAppMessage.length}/500 caracteres
+	                {draftWhatsAppMessage.length}/{WHATSAPP_MESSAGE_MAX_LENGTH} caracteres
 	              </p>
 	            </div>
 	            <DialogFooter>
