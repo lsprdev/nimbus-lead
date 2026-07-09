@@ -9,6 +9,7 @@ import {
   ChevronsUpDown,
   Coffee,
   Dumbbell,
+  FileText,
   HeartPulse,
   ListChecks,
   Loader2,
@@ -60,6 +61,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -71,7 +73,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
-import { normalizeList, type LeadList } from "@/lib/leads";
+import {
+  normalizeContact,
+  normalizeList,
+  type Contact,
+  type LeadList,
+} from "@/lib/leads";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
@@ -309,6 +316,181 @@ function buildSegmentHref(group: LeadListGroup) {
   return `/dashboard/segmentos/${encodeURIComponent(group.key)}?${params.toString()}`;
 }
 
+function slugify(value: string) {
+  return (
+    value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "") || "contatos"
+  );
+}
+
+function downloadBlob(content: BlobPart, filename: string, type: string) {
+  const blob = content instanceof Blob ? content : new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+type SegmentPdfContact = {
+  name: string;
+  phone: string;
+  city: string;
+  segment: string;
+};
+
+function buildSegmentContactsPdf(group: LeadListGroup, contacts: SegmentPdfContact[]) {
+  const pageWidth = 842;
+  const pageHeight = 595;
+  const margin = 32;
+  const tableTop = 500;
+  const headerHeight = 28;
+  const rowHeight = 48;
+  const columns = [
+    { label: "Nome", width: 185 },
+    { label: "Numero", width: 105 },
+    { label: "Cidade", width: 120 },
+    { label: "Segmento", width: 105 },
+    { label: "Observacao", width: 263 },
+  ];
+  const rowsPerPage = Math.max(
+    1,
+    Math.floor((tableTop - margin - headerHeight) / rowHeight),
+  );
+  const pages: string[] = [];
+
+  for (let start = 0; start < contacts.length; start += rowsPerPage) {
+    const pageRows = contacts.slice(start, start + rowsPerPage);
+    const commands: string[] = [
+      "0 0 0 rg",
+      `BT /F1 18 Tf ${margin} 552 Td (${escapePdfText(group.title)}) Tj ET`,
+      `BT /F1 10 Tf ${margin} 532 Td (${contacts.length} contatos exportados) Tj ET`,
+      "0.82 0.86 0.9 RG",
+      "0.7 w",
+    ];
+
+    let x = margin;
+    columns.forEach((column) => {
+      commands.push(`${x} ${tableTop - headerHeight} ${column.width} ${headerHeight} re S`);
+      commands.push(
+        `BT /F1 9 Tf ${x + 7} ${tableTop - 18} Td (${escapePdfText(column.label)}) Tj ET`,
+      );
+      x += column.width;
+    });
+
+    pageRows.forEach((contact, rowIndex) => {
+      const y = tableTop - headerHeight - rowIndex * rowHeight;
+      const values = [
+        contact.name,
+        contact.phone,
+        contact.city,
+        contact.segment,
+        "",
+      ];
+      let cellX = margin;
+
+      columns.forEach((column, columnIndex) => {
+        commands.push(`${cellX} ${y - rowHeight} ${column.width} ${rowHeight} re S`);
+        wrapPdfCell(values[columnIndex], Math.floor(column.width / 5.5), 2).forEach(
+          (line, lineIndex) => {
+            commands.push(
+              `BT /F1 8 Tf ${cellX + 7} ${y - 17 - lineIndex * 11} Td (${escapePdfText(line)}) Tj ET`,
+            );
+          },
+        );
+        cellX += column.width;
+      });
+    });
+
+    const pageNumber = pages.length + 1;
+    commands.push(
+      `BT /F1 8 Tf ${pageWidth - margin - 48} ${margin - 12} Td (Pagina ${pageNumber}) Tj ET`,
+    );
+    pages.push(commands.join("\n"));
+  }
+
+  return new Blob([createPdfDocument(pages, pageWidth, pageHeight)], {
+    type: "application/pdf",
+  });
+}
+
+function wrapPdfCell(value: string, maxLength: number, maxLines: number) {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let currentLine = "";
+
+  words.forEach((word) => {
+    const nextLine = currentLine ? `${currentLine} ${word}` : word;
+    if (nextLine.length > maxLength && currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = nextLine;
+    }
+  });
+  if (currentLine) lines.push(currentLine);
+
+  const visibleLines = lines.slice(0, maxLines);
+  if (lines.length > maxLines && visibleLines.length) {
+    visibleLines[visibleLines.length - 1] = `${visibleLines[visibleLines.length - 1].slice(0, Math.max(0, maxLength - 3))}...`;
+  }
+
+  return visibleLines;
+}
+
+function createPdfDocument(streams: string[], pageWidth: number, pageHeight: number) {
+  const objects: string[] = [];
+  objects.push("<< /Type /Catalog /Pages 2 0 R >>");
+
+  const pageObjectIds = streams.map((_, index) => 4 + index * 2);
+  objects.push(
+    `<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${streams.length} >>`,
+  );
+  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+
+  streams.forEach((stream, index) => {
+    const pageObjectId = 4 + index * 2;
+    const contentObjectId = pageObjectId + 1;
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentObjectId} 0 R >>`,
+    );
+    objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+  });
+
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(pdf.length);
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += "0000000000 65535 f \n";
+  offsets.slice(1).forEach((offset) => {
+    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  });
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+
+  return pdf;
+}
+
+function escapePdfText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7E]/g, "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
+}
+
 export default function SearchPage() {
   const { authFetch } = useAuth();
   const [lists, setLists] = React.useState<LeadList[]>([]);
@@ -336,6 +518,9 @@ export default function SearchPage() {
     null,
   );
   const [deletingSegmentKey, setDeletingSegmentKey] = React.useState<string | null>(
+    null,
+  );
+  const [exportingSegmentKey, setExportingSegmentKey] = React.useState<string | null>(
     null,
   );
   const [cityOptions, setCityOptions] = React.useState<ComboboxOption[]>([]);
@@ -713,6 +898,55 @@ export default function SearchPage() {
     }
   }
 
+  async function handleExportSegmentPdf(group: LeadListGroup) {
+    setExportingSegmentKey(group.key);
+    try {
+      const contactsByList = await Promise.all(
+        group.lists.map(async (list) => {
+          const response = await authFetch(`/api/lead-lists/${list.id}/contacts`);
+          const payload = await response.json().catch(() => []);
+
+          if (!response.ok) {
+            throw new Error(
+              payload?.message ?? "Não foi possível carregar os contatos.",
+            );
+          }
+
+          return {
+            list,
+            contacts: Array.isArray(payload) ? payload.map(normalizeContact) : [],
+          };
+        }),
+      );
+      const contacts = contactsByList.flatMap(({ list, contacts: listContacts }) =>
+        listContacts.map((contact: Contact) => ({
+          name: contact.name,
+          phone: contact.phone || "",
+          city: list.location,
+          segment: group.title,
+        })),
+      );
+
+      if (!contacts.length) {
+        toast.error("Não há contatos para exportar.");
+        return;
+      }
+
+      downloadBlob(
+        buildSegmentContactsPdf(group, contacts),
+        `${slugify(group.title)}-contatos.pdf`,
+        "application/pdf",
+      );
+      toast.success("PDF exportado.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Erro ao exportar PDF.",
+      );
+    } finally {
+      setExportingSegmentKey(null);
+    }
+  }
+
   return (
     <>
       <DashboardHeader title="Buscar" />
@@ -962,9 +1196,11 @@ export default function SearchPage() {
                   key={group.key}
                   group={group}
                   deleting={deletingSegmentKey === group.key}
+                  exporting={exportingSegmentKey === group.key}
                   pinning={pinningSegmentKey === group.key}
                   onAddLocation={() => openSegmentSearch(group)}
                   onEditSegment={() => openEditSegment(group)}
+                  onExportPdf={() => handleExportSegmentPdf(group)}
                   onDeleteSegment={() => handleDeleteSegment(group)}
                   onTogglePin={() => handleToggleSegmentPin(group)}
                 />
@@ -1056,17 +1292,21 @@ function MetricCard({
 function LeadListGroupCard({
   group,
   deleting,
+  exporting,
   pinning,
   onAddLocation,
   onEditSegment,
+  onExportPdf,
   onDeleteSegment,
   onTogglePin,
 }: {
   group: LeadListGroup;
   deleting: boolean;
+  exporting: boolean;
   pinning: boolean;
   onAddLocation: () => void;
   onEditSegment: () => void;
+  onExportPdf: () => void;
   onDeleteSegment: () => void;
   onTogglePin: () => void;
 }) {
@@ -1154,10 +1394,10 @@ function LeadListGroupCard({
                 variant="outline"
                 size="icon"
                 className="rounded-xl"
-                disabled={deleting || pinning}
+                disabled={deleting || exporting || pinning}
                 aria-label={`Abrir ações de ${group.title}`}
               >
-                {deleting || pinning ? (
+                {deleting || exporting || pinning ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (
                   <MoreVertical className="size-4" />
@@ -1165,29 +1405,38 @@ function LeadListGroupCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem onSelect={onAddLocation}>
-                <Plus className="size-4" />
-                Adicionar local
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={onEditSegment}>
-                <Pencil className="size-4" />
-                Editar
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={pinning || deleting}
-                onSelect={onTogglePin}
-              >
-                <PinIcon className="size-4" />
-                {group.pinned ? "Soltar" : "Fixar"}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                variant="destructive"
-                disabled={deleting || pinning}
-                onSelect={() => setDeleteDialogOpen(true)}
-              >
-                <Trash2 className="size-4" />
-                Excluir
-              </DropdownMenuItem>
+              <DropdownMenuGroup>
+                <DropdownMenuItem onSelect={onAddLocation}>
+                  <Plus className="size-4" />
+                  Adicionar local
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={onEditSegment}>
+                  <Pencil className="size-4" />
+                  Editar
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={deleting || exporting || pinning}
+                  onSelect={onExportPdf}
+                >
+                  <FileText className="size-4" />
+                  Exportar em PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={pinning || deleting || exporting}
+                  onSelect={onTogglePin}
+                >
+                  <PinIcon className="size-4" />
+                  {group.pinned ? "Soltar" : "Fixar"}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  variant="destructive"
+                  disabled={deleting || exporting || pinning}
+                  onSelect={() => setDeleteDialogOpen(true)}
+                >
+                  <Trash2 className="size-4" />
+                  Excluir
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
           <AlertDialog
