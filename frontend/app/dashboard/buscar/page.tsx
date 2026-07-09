@@ -355,10 +355,10 @@ function buildSegmentContactsPdf(group: LeadListGroup, contacts: SegmentPdfConta
   const rowHeight = 48;
   const columns = [
     { label: "Nome", width: 185 },
-    { label: "Numero", width: 105 },
+    { label: "Número", width: 105 },
     { label: "Cidade", width: 120 },
     { label: "Segmento", width: 105 },
-    { label: "Observacao", width: 263 },
+    { label: "Observação", width: 263 },
   ];
   const rowsPerPage = Math.max(
     1,
@@ -370,8 +370,8 @@ function buildSegmentContactsPdf(group: LeadListGroup, contacts: SegmentPdfConta
     const pageRows = contacts.slice(start, start + rowsPerPage);
     const commands: string[] = [
       "0 0 0 rg",
-      `BT /F1 18 Tf ${margin} 552 Td (${escapePdfText(group.title)}) Tj ET`,
-      `BT /F1 10 Tf ${margin} 532 Td (${contacts.length} contatos exportados) Tj ET`,
+      `BT /F1 18 Tf ${margin} 552 Td ${encodePdfText(group.title)} Tj ET`,
+      `BT /F1 10 Tf ${margin} 532 Td ${encodePdfText(`${contacts.length} contatos exportados`)} Tj ET`,
       "0.82 0.86 0.9 RG",
       "0.7 w",
     ];
@@ -380,7 +380,7 @@ function buildSegmentContactsPdf(group: LeadListGroup, contacts: SegmentPdfConta
     columns.forEach((column) => {
       commands.push(`${x} ${tableTop - headerHeight} ${column.width} ${headerHeight} re S`);
       commands.push(
-        `BT /F1 9 Tf ${x + 7} ${tableTop - 18} Td (${escapePdfText(column.label)}) Tj ET`,
+        `BT /F1 9 Tf ${x + 7} ${tableTop - 18} Td ${encodePdfText(column.label)} Tj ET`,
       );
       x += column.width;
     });
@@ -401,7 +401,7 @@ function buildSegmentContactsPdf(group: LeadListGroup, contacts: SegmentPdfConta
         wrapPdfCell(values[columnIndex], Math.floor(column.width / 5.5), 2).forEach(
           (line, lineIndex) => {
             commands.push(
-              `BT /F1 8 Tf ${cellX + 7} ${y - 17 - lineIndex * 11} Td (${escapePdfText(line)}) Tj ET`,
+              `BT /F1 8 Tf ${cellX + 7} ${y - 17 - lineIndex * 11} Td ${encodePdfText(line)} Tj ET`,
             );
           },
         );
@@ -411,7 +411,7 @@ function buildSegmentContactsPdf(group: LeadListGroup, contacts: SegmentPdfConta
 
     const pageNumber = pages.length + 1;
     commands.push(
-      `BT /F1 8 Tf ${pageWidth - margin - 48} ${margin - 12} Td (Pagina ${pageNumber}) Tj ET`,
+      `BT /F1 8 Tf ${pageWidth - margin - 48} ${margin - 12} Td ${encodePdfText(`Página ${pageNumber}`)} Tj ET`,
     );
     pages.push(commands.join("\n"));
   }
@@ -453,7 +453,7 @@ function createPdfDocument(streams: string[], pageWidth: number, pageHeight: num
   objects.push(
     `<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${streams.length} >>`,
   );
-  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
 
   streams.forEach((stream, index) => {
     const pageObjectId = 4 + index * 2;
@@ -481,14 +481,15 @@ function createPdfDocument(streams: string[], pageWidth: number, pageHeight: num
   return pdf;
 }
 
-function escapePdfText(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\x20-\x7E]/g, "")
-    .replace(/\\/g, "\\\\")
-    .replace(/\(/g, "\\(")
-    .replace(/\)/g, "\\)");
+function encodePdfText(value: string) {
+  const hex = Array.from(value.normalize("NFC"))
+    .map((char) => {
+      const code = char.charCodeAt(0);
+      return (code <= 255 ? code : 63).toString(16).padStart(2, "0");
+    })
+    .join("");
+
+  return `<${hex}>`;
 }
 
 export default function SearchPage() {
