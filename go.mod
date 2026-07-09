@@ -4,7 +4,7 @@ go 1.25.6
 
 require (
 	github.com/joho/godotenv v1.5.1
-	github.com/playwright-community/playwright-go v0.5700.1
+	github.com/mxschmitt/playwright-go v0.6100.0
 	github.com/pocketbase/dbx v1.12.0
 	github.com/pocketbase/pocketbase v0.39.0
 )
@@ -19,7 +19,7 @@ require (
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/ganigeorgiev/fexpr v0.5.0 // indirect
-	github.com/go-jose/go-jose/v3 v3.0.4 // indirect
+	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0 // indirect
 	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect

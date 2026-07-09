@@ -7,12 +7,12 @@ ENV PLAYWRIGHT_DRIVER_PATH=/playwright-driver
 COPY go.mod go.sum ./
 RUN go mod download
 
-RUN go run github.com/playwright-community/playwright-go/cmd/playwright@v0.5700.1 install chromium
+RUN go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6100.0 install chromium
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/kartapro .
 
-FROM mcr.microsoft.com/playwright:v1.57.0-noble
+FROM mcr.microsoft.com/playwright:v1.61.1-noble
 
 WORKDIR /app
 
