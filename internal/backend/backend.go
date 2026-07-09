@@ -96,10 +96,11 @@ func Register(app core.App) {
 		e.Router.GET("/api/contact-collections", listContactCollections(app)).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/contact-collections/contact-ids", listCollectedContactIds(app)).Bind(apis.RequireAuth("users"))
 		e.Router.GET("/api/contact-collections/memberships", listContactCollectionMemberships(app)).Bind(apis.RequireAuth("users"))
+		e.Router.GET("/api/contact-collections/{id}/contacts", getContactCollectionContacts(app)).Bind(apis.RequireAuth("users"))
 		e.Router.POST("/api/contact-collections", createContactCollection(app)).Bind(apis.RequireAuth("users"))
 		e.Router.PATCH("/api/contact-collections/{id}", updateContactCollection(app)).Bind(apis.RequireAuth("users"))
-		e.Router.DELETE("/api/contact-collections/{id}", deleteContactCollection(app)).Bind(apis.RequireAuth("users"))
 		e.Router.DELETE("/api/contact-collections/contacts/{id}", removeContactFromCollections(app)).Bind(apis.RequireAuth("users"))
+		e.Router.DELETE("/api/contact-collections/{id}", deleteContactCollection(app)).Bind(apis.RequireAuth("users"))
 		e.Router.POST("/api/contact-collections/{id}/contacts", addContactToCollection(app)).Bind(apis.RequireAuth("users"))
 
 		manager.start()
@@ -460,6 +461,62 @@ func listContactCollectionMemberships(app core.App) func(*core.RequestEvent) err
 		}
 
 		return e.JSON(200, memberships)
+	}
+}
+
+func getContactCollectionContacts(app core.App) func(*core.RequestEvent) error {
+	return func(e *core.RequestEvent) error {
+		collectionId := strings.TrimSpace(e.Request.PathValue("id"))
+		collectionRecord, err := findOwnedRecord(app, collectionContactCollections, collectionId, e.Auth.Id)
+		if err != nil {
+			return e.NotFoundError("Collection not found.", err)
+		}
+
+		items, err := app.FindRecordsByFilter(
+			collectionContactCollectionItems,
+			"user={:user} && collection={:collection}",
+			"-created",
+			10000,
+			0,
+			dbx.Params{"user": e.Auth.Id, "collection": collectionId},
+		)
+		if err != nil {
+			return e.InternalServerError("Could not list collection contacts.", err)
+		}
+
+		contacts := make([]*core.Record, 0, len(items))
+		seen := make(map[string]struct{}, len(items))
+		for _, item := range items {
+			contactId := item.GetString("contact")
+			if contactId == "" {
+				continue
+			}
+			if _, ok := seen[contactId]; ok {
+				continue
+			}
+			seen[contactId] = struct{}{}
+
+			contactRecord, err := findOwnedRecord(app, collectionContacts, contactId, e.Auth.Id)
+			if err != nil {
+				continue
+			}
+			if strings.TrimSpace(contactRecord.GetString("phone")) == "" {
+				continue
+			}
+			contacts = append(contacts, contactRecord)
+		}
+
+		return e.JSON(200, map[string]any{
+			"collection": map[string]any{
+				"id":            collectionRecord.Id,
+				"name":          collectionRecord.GetString("name"),
+				"color":         normalizeCollectionColor(collectionRecord.GetString("color")),
+				"contact_count": len(contacts),
+				"created":       collectionRecord.GetDateTime("created").String(),
+				"updated":       collectionRecord.GetDateTime("updated").String(),
+			},
+			"contacts": contacts,
+		})
 	}
 }
 

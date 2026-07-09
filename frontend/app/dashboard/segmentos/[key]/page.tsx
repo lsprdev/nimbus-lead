@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   ExternalLink,
   Loader2,
+  MessageCircle,
   Phone,
   Search,
   Star,
@@ -87,6 +88,16 @@ function getGoogleMapsUrl(contact: Contact) {
 
   const query = [contact.name, contact.address].filter(Boolean).join(" ");
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
+function getWhatsAppWebUrl(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 10) return null;
+
+  const phoneWithCountryCode =
+    digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
+
+  return `https://web.whatsapp.com/send?phone=${phoneWithCountryCode}`;
 }
 
 function formatSegmentTitle(value: string) {
@@ -922,6 +933,8 @@ function ContactCard({
   onSaveToCollection: () => void;
   cardRef?: (element: HTMLDivElement | null) => void;
 }) {
+  const whatsAppUrl = contact.phone ? getWhatsAppWebUrl(contact.phone) : null;
+
   function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -995,10 +1008,31 @@ function ContactCard({
       </div>
       <div className="mt-5 flex min-w-0 flex-col gap-3 text-sm text-muted-foreground">
         {contact.phone ? (
-          <span className="grid min-w-0 grid-cols-[1.25rem_1fr] items-center gap-3">
+          <div className="grid min-w-0 grid-cols-[1.25rem_minmax(0,1fr)_2rem] items-center gap-3">
             <Phone className="size-5 text-muted-foreground" />
             <span className="min-w-0 truncate">{contact.phone}</span>
-          </span>
+            {whatsAppUrl ? (
+              <Button
+                asChild
+                type="button"
+                variant="outline"
+                size="icon"
+                className="size-8 rounded-xl text-emerald-600 hover:text-emerald-700"
+              >
+                <a
+                  href={whatsAppUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Abrir WhatsApp Web para ${contact.name}`}
+                  title="Abrir no WhatsApp Web"
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
+                >
+                  <MessageCircle className="size-4" />
+                </a>
+              </Button>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </div>
